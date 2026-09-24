@@ -85,6 +85,7 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
     <div class="score" id="score"></div>
     <div class="rowlabel">Expected</div>
     <div class="voices" id="voices"></div>
+    <div class="muted" style="margin:-4px 0 14px">Speed <input type="range" id="speed" min="0.6" max="1.2" step="0.05" value="0.9" style="width:120px;vertical-align:middle"> <span id="speedval">0.90×</span></div>
     <div class="pitchrow" id="expected"></div>
     <div class="rowlabel">What you said</div>
     <div class="pitchrow heard" id="heard"></div>
@@ -104,7 +105,7 @@ async function loadVoices() {
   $("voices").querySelectorAll("button").forEach(b => b.onclick = () => {
     $("voices").querySelectorAll("button").forEach(x => x.classList.remove("playing"));
     b.classList.add("playing");
-    play(`/api/tts?id=${cur.id}&voice=${b.dataset.voice}`);
+    play(`/api/tts?id=${cur.id}&voice=${b.dataset.voice}&speed=${$("speed").value}`);
     player.onended = player.onpause = () => b.classList.remove("playing");
   });
 }
@@ -185,6 +186,7 @@ function play(src) { if (player) player.pause(); player = new Audio(src); player
 $("rec").onclick = () => recording ? stopRec() : startRec();
 $("mine").onclick = () => recBlob && play(URL.createObjectURL(recBlob));
 $("next").onclick = next;
+$("speed").oninput = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
 loadVoices().then(next);
 </script>
 </body>

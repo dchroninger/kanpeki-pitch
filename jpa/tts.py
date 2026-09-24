@@ -135,3 +135,30 @@ def speak(phrases: list[accent.Phrase], style_id: int, accs: list[int] | None = 
     q.pitch_scale = pitch_shift
     wav, sr = sf.read(io.BytesIO(synth().synthesis(q, style_id)), dtype="float32")
     return wav, sr
+
+
+def speak_groups(groups: list[list[accent.Phrase]], style_id: int, speed: float = 0.9,
+                 pause_scale: float = 1.4, enforce="natural", range_st: float = 4.0):
+    """Speak clause groups with a real pause between them (、 in VOICEVOX kana), not one run-on breath."""
+    import io
+    import soundfile as sf
+    groups = [g for g in groups if g]
+    flat = [p for g in groups for p in g]
+    accs = [p.acc for p in flat]
+    kana = "、".join(to_kana(g) for g in groups)
+    q = synth().create_audio_query_from_kana(kana, style_id)
+    if enforce == "natural":
+        natural_fix(q, flat, accs, range_st)
+    elif enforce and enforce != "raw":
+        enforce_pattern(q, flat, accs, range_st)
+    q.speed_scale = speed
+    q.pause_length_scale = pause_scale
+    q.post_phoneme_length = 0.1
+    wav, sr = sf.read(io.BytesIO(synth().synthesis(q, style_id)), dtype="float32")
+    return wav, sr
+
+
+def clauses(sentence: str) -> list[list[accent.Phrase]]:
+    """Split a sentence at 、/，/・-free clause marks and analyse each clause separately."""
+    import re
+    return [accent.analyze(c)[0] for c in re.split(r"[、，,]", sentence) if c.strip()]

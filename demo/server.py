@@ -159,13 +159,14 @@ _part_cache = {}
 
 
 @app.get("/api/part")
-def part(voice: int, s: str):
+def part(voice: int, s: str, speed: float = 0.9):
     """One sentence of audio: small, so playback can start after ~1 s and stream the rest."""
-    k = (voice, s)
+    speed = min(max(speed, 0.5), 1.3)
+    k = (voice, s, speed)
     if k not in _part_cache:
         v = BY_ID[voice]; tts.load(v["vvm"])
-        wav, sr = tts.speak(accent.analyze(s)[0], voice, speed=0.95, enforce="natural")
-        wav = np.concatenate([wav, np.zeros(int(0.3 * sr), np.float32)])
+        wav, sr = tts.speak_groups(tts.clauses(s), voice, speed=speed)
+        wav = np.concatenate([wav, np.zeros(int(0.7 * sr / speed), np.float32)])  # breath between sentences
         buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
         _part_cache[k] = buf.getvalue()
     return Response(_part_cache[k], media_type="audio/wav")
@@ -193,9 +194,12 @@ def sample(voice: int, key: str = "soseki", text: str = ""):
 
 
 @app.get("/api/tts")
-def speak(id: str, voice: int = 2, mode: str = "natural"):
+def speak(id: str, voice: int = 2, mode: str = "natural", speed: float = 0.9):
     tts.load(BY_ID[voice]["vvm"])
-    wav, sr = tts.speak(parse_label(labels[id]), voice, speed=0.9, enforce={"natural": "natural", "enforce": True, "raw": "raw"}[mode])
+    # JSUT labels mark pauses with "_": speak each pause group as its own clause
+    groups = [parse_label(g) for g in labels[id].strip("^$?").split("_") if g.strip("#")]
+    wav, sr = tts.speak_groups(groups, voice, speed=min(max(speed, 0.5), 1.3),
+                               enforce={"natural": "natural", "enforce": True, "raw": "raw"}[mode])
     buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
     return Response(buf.getvalue(), media_type="audio/wav")
 

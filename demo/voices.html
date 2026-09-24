@@ -42,7 +42,9 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
   </header>
   <div style="margin:20px 0 8px; padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:12px">
     <div class="row" style="gap:10px; flex-wrap:wrap; justify-content:flex-start">
-      <span class="muted">Sample text</span><select id="textsel" style="font:inherit;font-size:14px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"></select>
+      <span class="muted">Speed</span><input type="range" id="speed" min="0.6" max="1.2" step="0.05" value="0.9" style="width:140px">
+      <span class="muted" id="speedval">0.90×</span>
+      <span class="muted" style="margin-left:12px">Sample text</span><select id="textsel" style="font:inherit;font-size:14px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"></select>
     </div>
     <textarea id="textbox" rows="4" style="width:100%; margin-top:10px; font:inherit; font-size:17px; line-height:1.8; padding:10px;
       border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); resize:vertical"></textarea>
@@ -89,7 +91,8 @@ async function playVoice(b) {
   const t = $("textbox").value.trim(), orig = texts.find(x => x.key === $("textsel").value);
   const body = orig && t === orig.text ? { key: orig.key } : { text: t };
   const sents = await (await fetch("/api/parts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
-  const get = i => fetch(`/api/part?voice=${voice}&s=${encodeURIComponent(sents[i])}`).then(r => r.blob());
+  const sp = $("speed").value;
+  const get = i => fetch(`/api/part?voice=${voice}&speed=${sp}&s=${encodeURIComponent(sents[i])}`).then(r => r.blob());
   let next = sents.length ? get(0) : null;
   for (let i = 0; i < sents.length && my === session; i++) {
     const blob = await next;
@@ -118,6 +121,7 @@ $("save").onclick = async () => {
   const r = await (await fetch("/api/voices/keep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ids) })).json();
   $("saved").textContent = `Saved ${r.saved} ✓`;
 };
+$("speed").oninput = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
 loadTexts().then(load);
 </script>
 </body>
