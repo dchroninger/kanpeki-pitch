@@ -2,3 +2,9 @@ train phrases 63051  test JSUT 6911  JVS 1890  (4s)
 AUG=False BAL=False  JSUT 28063 / JVS 34988 phrases
 epoch 0 loss 0.377 (152s)
 epoch 1 loss 0.246 (290s)
+epoch 2 loss 0.193 (429s)
+epoch 3 loss 0.161 (569s)
+epoch 4 loss 0.141 (708s)
+epoch 5 loss 0.127 (848s)
+| full_noaug [seq] | balanced | 9.8 / 9.3 | 3.8 | 91.4 | 7.9 | 11.4 / 9.4 | 7.6 / 15.1 | 4.7 / 1.0 / 9.0 |
+| full_noaug [seq] | strict | 6.9 / 6.8 | 2.3 | 89.4 | 13.1 | 7.8 / 15.1 | 4.6 / 24.4 | 3.0 / 0.7 / 15.0 |

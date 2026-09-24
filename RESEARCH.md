@@ -106,3 +106,37 @@ Columns: FA M / F · MISS · caught · abstain on the fixed JVS test; **atamadak
 | utterance-medial | 6232 | 4.6 | 41.5 |
 
 **Correction to finding 4:** the manual review (5 examples) suggested atamadaka was the blind spot. The full breakdown shows the real weak spot is **nakadaka** — the grader can't decide between "drop after mora k" and "k+1" (peak delay), so it abstains on ~62% of them. Small manual samples mislead; always follow up with a breakdown.
+
+## Feature & model experiments (fixed test protocol)
+
+All at full data (JSUT-4000 + JVS 70 train speakers × 90 sentences) unless noted. JVS-dict = cleaner JVS subset (single noun + particles, OpenJTalk label agrees with Kanjium dictionary; 510 phrases).
+
+| Model | Thresholds | JVS FA M / F | JVS MISS | JVS abstain | JVS-dict FA / MISS / abst | JSUT FA | JSUT MISS | JSUT abstain |
+|---|---|---|---|---|---|---|---|---|
+| tree v1 | 0.9/0.1 | 2.5 / 3.8 | 0.8 | 29.2 | – | 4.7 | 0.4 | 34.8 |
+| tree v3 | 0.9/0.1 | 3.0 / 4.0 | 0.7 | 26.6 | 3.1 / 0.6 / 23.1 | 4.3 | 0.3 | 31.3 |
+| tree v3 | 0.95/0.05 | 1.2 / 2.4 | 0.3 | 38.8 | 1.2 / 0.2 / 35.9 | 2.5 | 0.1 | 43.9 |
+| seq (BiGRU), no aug | 0.9/0.1 | 6.9 / 6.8 | 2.3 | 13.1 | – | 3.0 | 0.7 | 15.0 |
+| seq, pitch-range aug | 0.9/0.1 | 8.6 / 7.1 | 2.3 | 15.3 | – | 3.6 | 0.8 | 15.6 |
+| **avg(tree v3, seq no-aug)** | **0.9/0.1** | **3.0 / 3.6** | 0.9 | **24.3** | **2.2 / 1.6 / 20.0** | **2.4** | 0.3 | **27.2** |
+| avg(tree v3, seq no-aug) | 0.95/0.05 | 1.1 / 2.0 | 0.2 | 34.2 | 0.8 / 0.4 / 29.5 | 1.4 | 0.1 | 38.2 |
+
+- **Features:** v2 (peak position, steepest-fall slope/position, utterance-relative pitch, interpolation for unvoiced morae) and v3 (+ 6 raw contour samples per mora for j−1..j+2) give small, consistent gains, mostly in abstain rate and JSUT FA. Differences < ~1.5 pts on the JVS test (~2k phrases) are within noise; JSUT held-out (~6.9k phrases) is the more sensitive benchmark.
+- **Sequence model (BiGRU over per-mora contour samples):** far fewer abstains and much better on nakadaka (JSUT nakadaka abstain ~62% → ~24%), but **overconfident on unseen speakers** — more FA *and* MISS on JVS, including the dictionary-clean subset, so it is speaker overfitting (JSUT's single voice is ~45% of training phrases), not label noise. Pitch-range augmentation did not fix it.
+- **Ensemble (average of posteriors) is the best trade-off:** keeps the tree's calibration on new speakers and gets the sequence model's coverage. Geometric mean was worse than arithmetic (inherits seq overconfidence).
+- **Current pick for the demo:** avg(tree v3 full, seq no-aug full), strict 0.9/0.1.
+
+## Demo sanity check (native JSUT recordings through the live demo server)
+
+15 random demo sentences, 74 phrases: **55 ok, 1 wrong, 18 unsure.** (Optimistic — some of these sentences are in JSUT training.)
+
+**Known issue:** VOICEVOX audio with *enforced* per-mora pitch (used for the "play correct pitch" reference) is unnaturally flat-stepped; the ensemble often scores it as wrong (seq model sees it as out-of-distribution). It sounds right to humans, but for the app: keep VOICEVOX's natural contour and only correct moras where its predicted pitch contradicts the dictionary pattern.
+
+## Open items before iOS
+
+- [ ] Real learner speech — the only data type we have zero of. Demo sessions are the first source.
+- [ ] More distinct sentences (scaling curve not flat at 90).
+- [ ] Speaker-robust sequence model (more speakers per sentence diversity, or speaker-normalised inputs) — would cut abstain further.
+- [ ] Natural-contour TTS reference (see known issue).
+- [ ] Product rules from review: skip names / out-of-dictionary words; accept alternative phrasing for long compounds; confirm kana reading in free-speech mode.
+- [ ] Licensing: UTokyo commercial permission for models trained on JSUT/JVS.
