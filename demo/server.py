@@ -93,17 +93,22 @@ def voices():
 
 
 @app.get("/api/tts")
-def speak(id: str, voice: int = 2):
+def speak(id: str, voice: int = 2, mode: str = "natural"):
     vvm = next(v for v, sid, _ in VOICES if sid == voice)
     tts.load(vvm)
-    wav, sr = tts.speak(parse_label(labels[id]), voice, speed=0.9)
+    wav, sr = tts.speak(parse_label(labels[id]), voice, speed=0.9, enforce={"natural": "natural", "enforce": True, "raw": "raw"}[mode])
     buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
     return Response(buf.getvalue(), media_type="audio/wav")
 
 
 @app.post("/api/grade")
-async def grade(request: Request, id: str):
-    audio, sr = sf.read(io.BytesIO(await request.body()), dtype="float32")
+async def grade(request: Request, id: str, save: int = 1):
+    body = await request.body()
+    import time
+    if save:  # user recordings are kept (first real learner data); scripted tests pass save=0
+        rec_dir = ROOT / "demo" / "recordings"; rec_dir.mkdir(exist_ok=True)
+        (rec_dir / f"{time.strftime('%Y%m%d-%H%M%S')}_{id}.wav").write_bytes(body)
+    audio, sr = sf.read(io.BytesIO(body), dtype="float32")
     if audio.ndim > 1: audio = audio.mean(1)
     gold = parse_label(labels[id])
     pad = np.zeros(4800, np.float32)

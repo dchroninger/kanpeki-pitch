@@ -104,7 +104,7 @@ async function next() {
   cur = await (await fetch("/api/sentence")).json();
   $("sentence").innerHTML = cur.furigana.map(([s, r]) => r ? `<ruby>${s}<rt>${r}</rt></ruby>` : s).join("");
   $("results").hidden = true; $("error").hidden = true; $("status").textContent = "";
-  $("mine").disabled = true; lastWav = null;
+  $("mine").disabled = true; lastWav = null; recBlob = null;
   $("rec").disabled = false; $("rec").innerHTML = "● Record";
 }
 
@@ -125,13 +125,14 @@ function show(res) {
   $("results").hidden = false;
 }
 
-// ---- recording: raw PCM -> WAV (no codec needed server-side)
+// ---- recording: MediaRecorder (runs off the main thread, no dropouts) -> decode -> 16 kHz WAV
+let mediaRec = null, recBlob = null;
 async function startRec() {
   stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-  ctx = new AudioContext(); src = ctx.createMediaStreamSource(stream);
-  proc = ctx.createScriptProcessor(4096, 1, 1); chunks = [];
-  proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-  src.connect(proc); proc.connect(ctx.destination);
+  chunks = [];
+  mediaRec = new MediaRecorder(stream);
+  mediaRec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  mediaRec.start(250);  // flush every 250 ms so nothing is held back at stop
   recording = true; $("rec").innerHTML = `<span class="dot"></span>Stop`; $("status").textContent = "Recording…";
   $("results").hidden = true; $("error").hidden = true;
 }
@@ -148,13 +149,19 @@ function wavBlob(samples, rate) {
 }
 
 async function stopRec() {
-  recording = false; proc.disconnect(); src.disconnect(); stream.getTracks().forEach(t => t.stop());
-  const rate = ctx.sampleRate; await ctx.close();
-  const all = new Float32Array(chunks.reduce((n, c) => n + c.length, 0)); let o = 0;
-  chunks.forEach(c => { all.set(c, o); o += c.length; });
-  lastWav = wavBlob(all, rate); $("mine").disabled = false;
+  recording = false;
+  const stopped = new Promise(r => mediaRec.onstop = r);
+  mediaRec.stop(); await stopped;
+  stream.getTracks().forEach(t => t.stop());
+  recBlob = new Blob(chunks, { type: mediaRec.mimeType });
+  $("mine").disabled = false;
   $("rec").disabled = true; $("rec").innerHTML = "● Record"; $("status").textContent = "Scoring…";
   try {
+    const dctx = new AudioContext({ sampleRate: 16000 });
+    const audio = await dctx.decodeAudioData(await recBlob.arrayBuffer());
+    await dctx.close();
+    lastWav = wavBlob(audio.getChannelData(0), audio.sampleRate);
+    $("status").textContent = `Scoring… (${audio.duration.toFixed(1)} s)`;
     const res = await (await fetch(`/api/grade?id=${cur.id}`, { method: "POST", body: lastWav })).json();
     $("status").textContent = "";
     if (res.error) { $("error").textContent = res.error + (res.heard ? ` (heard: ${res.heard})` : ""); $("error").hidden = false; }
@@ -163,9 +170,12 @@ async function stopRec() {
   $("rec").disabled = false; $("rec").innerHTML = "● Try again";
 }
 
+let player = null;  // keep a reference so playback isn't garbage-collected mid-clip
+function play(src) { if (player) player.pause(); player = new Audio(src); player.play(); }
+
 $("rec").onclick = () => recording ? stopRec() : startRec();
-$("mine").onclick = () => lastWav && new Audio(URL.createObjectURL(lastWav)).play();
-$("play").onclick = () => new Audio(`/api/tts?id=${cur.id}&voice=${$("voice").value}`).play();
+$("mine").onclick = () => recBlob && play(URL.createObjectURL(recBlob));
+$("play").onclick = () => play(`/api/tts?id=${cur.id}&voice=${$("voice").value}`);
 $("next").onclick = next;
 loadVoices().then(next);
 </script>

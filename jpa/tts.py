@@ -83,14 +83,53 @@ def enforce_pattern(q, phrases: list[accent.Phrase], accs: list[int], range_st: 
     return q
 
 
+def _violations(q, pat, rise=1.0, max_sag=1.5):
+    """Does contour q (log-F0 per mora, 0 = unvoiced) contradict H/L pattern pat? Compares voiced neighbours."""
+    v = [i for i, x in enumerate(q) if x > 0]
+    for a, b in zip(v, v[1:]):
+        d = (q[b] - q[a]) / ST
+        if pat[a] == "L" and pat[b] == "H" and d < rise: return True
+        if pat[a] == "H" and pat[b] == "L" and d > -rise: return True
+        if pat[a] == pat[b] and d < -max_sag: return True   # a fake drop inside a level stretch
+    return False
+
+
+def natural_fix(q, phrases: list[accent.Phrase], accs: list[int], range_st: float = 4.0):
+    """Keep VOICEVOX's own contour; per phrase, blend toward the dictionary pattern only as far as needed.
+
+    Returns the blend weight used per phrase (0 = untouched, 1 = fully enforced)."""
+    used = []
+    for ap, p, acc in zip(q.accent_phrases, phrases, accs):
+        pat = accent.pattern(len(p.moras), acc)
+        nat = [m.pitch for m in ap.moras]
+        voiced = [x for x in nat if x > 0]
+        if not voiced:
+            used.append(0.0); continue
+        base = float(np.mean(voiced))
+        tgt = [base + ST * ((range_st / 2 if c == "H" else -range_st / 2) - 0.3 * i) if x > 0 else 0.0
+               for i, (x, c) in enumerate(zip(nat, pat))]
+        for w in (0.0, 0.25, 0.5, 0.75, 1.0):
+            new = [x + w * (t - x) if x > 0 else 0.0 for x, t in zip(nat, tgt)]
+            if not _violations(new, pat) or w == 1.0:
+                break
+        for m, x in zip(ap.moras, new):
+            m.pitch = x
+        used.append(w)
+    return used
+
+
 def speak(phrases: list[accent.Phrase], style_id: int, accs: list[int] | None = None,
-          speed: float = 1.0, pitch_shift: float = 0.0, enforce: bool = True,
+          speed: float = 1.0, pitch_shift: float = 0.0, enforce: bool | str = True,
           range_st: float = 4.0) -> tuple[np.ndarray, int]:
+    """enforce: True/"enforce" = flat dictionary levels, "natural" = minimal fix of VOICEVOX's own contour,
+    False/"raw" = VOICEVOX untouched."""
     import io
     import soundfile as sf
     accs = accs if accs is not None else [p.acc for p in phrases]
     q = synth().create_audio_query_from_kana(to_kana(phrases, accs), style_id)
-    if enforce:
+    if enforce == "natural":
+        speak.last_blend = natural_fix(q, phrases, accs, range_st)
+    elif enforce and enforce != "raw":
         enforce_pattern(q, phrases, accs, range_st)
     q.speed_scale = speed
     q.pitch_scale = pitch_shift
