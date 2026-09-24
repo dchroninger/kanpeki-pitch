@@ -67,7 +67,9 @@ if Path(SEQ).exists():
     net = sm.Net(next(sm.utt_phrases(dummy))[1].shape[1]); net.load_state_dict(torch.load(SEQ)); net.eval()
 print(f"tree={TREE} seq={SEQ if net else 'none'} device={align.DEVICE}", flush=True)
 import json
-CATALOG = json.load(open(ROOT / "voice_catalog_neutral.json"))          # one neutral style per character
+CATALOG = [dict(v, engine="voicevox") for v in json.load(open(ROOT / "voice_catalog_neutral.json"))]  # one neutral style per character
+if (ROOT / "voice_catalog_aivis.json").exists():   # AivisSpeech: listening only (can't follow accent marks)
+    CATALOG += json.load(open(ROOT / "voice_catalog_aivis.json"))
 BY_ID = {v["id"]: v for v in CATALOG}
 KEEP = ROOT / "demo" / "voices_keep.json"
 DEFAULT_KEEP = [2, 3, 11, 13, 16, 14]
@@ -115,7 +117,9 @@ def sentence():
 
 @app.get("/api/voices")
 def voices():
-    return [dict(id=i, name=BY_ID[i]["name"], gender=BY_ID[i]["gender"]) for i in kept() if i in BY_ID]
+    # practice references must follow the dictionary accent -> VOICEVOX only
+    return [dict(id=i, name=BY_ID[i]["name"], gender=BY_ID[i]["gender"]) for i in kept()
+            if i in BY_ID and BY_ID[i]["engine"] == "voicevox"]
 
 
 @app.get("/voices")
@@ -164,8 +168,12 @@ def part(voice: int, s: str, speed: float = 0.9):
     speed = min(max(speed, 0.5), 1.3)
     k = (voice, s, speed)
     if k not in _part_cache:
-        v = BY_ID[voice]; tts.load(v["vvm"])
-        wav, sr = tts.speak_groups(tts.clauses(s), voice, speed=speed)
+        v = BY_ID[voice]
+        if v["engine"] == "aivis":
+            wav, sr = tts.aivis_speak_groups(tts.clauses(s), voice, speed=speed)
+        else:
+            tts.load(v["vvm"])
+            wav, sr = tts.speak_groups(tts.clauses(s), voice, speed=speed)
         wav = np.concatenate([wav, np.zeros(int(0.7 * sr / speed), np.float32)])  # breath between sentences
         buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
         _part_cache[k] = buf.getvalue()

@@ -162,3 +162,27 @@ def clauses(sentence: str) -> list[list[accent.Phrase]]:
     """Split a sentence at 、/，/・-free clause marks and analyse each clause separately."""
     import re
     return [accent.analyze(c)[0] for c in re.split(r"[、，,]", sentence) if c.strip()]
+
+
+# ---------------------------------------------------------------- AivisSpeech (Style-Bert-VITS2) backend
+AIVIS = "http://127.0.0.1:10101"
+
+
+def _aivis(path, data=None, ctype="application/json"):
+    import urllib.request
+    req = urllib.request.Request(AIVIS + path, data=data, method="POST", headers={"Content-Type": ctype} if data else {})
+    return urllib.request.urlopen(req).read()
+
+
+def aivis_speak_groups(groups: list[list[accent.Phrase]], style_id: int, speed: float = 0.9, pause_scale: float = 1.4):
+    """Same contract as speak_groups, via the AivisSpeech engine. Accent is set by nucleus position
+    (the model has no per-mora pitch input), from our dictionary-derived kana."""
+    import io, json, urllib.parse
+    import soundfile as sf
+    groups = [g for g in groups if g]
+    kana = "、".join(to_kana(g) for g in groups)
+    aps = json.loads(_aivis(f"/accent_phrases?speaker={style_id}&is_kana=true&text={urllib.parse.quote(kana)}"))
+    q = json.loads(_aivis(f"/audio_query?speaker={style_id}&text={urllib.parse.quote('あ')}"))
+    q.update(accent_phrases=aps, speedScale=speed, pauseLengthScale=pause_scale, postPhonemeLength=0.1)
+    wav, sr = sf.read(io.BytesIO(_aivis(f"/synthesis?speaker={style_id}", json.dumps(q).encode())), dtype="float32")
+    return (wav.mean(1) if wav.ndim > 1 else wav), sr

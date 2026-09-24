@@ -53,6 +53,9 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
   <p class="muted">Split by measured pitch (median F0; under 165 Hz = male). Borderline voices are worth a listen either way. First play of a voice takes a second or two to load.</p>
   <h2 id="mh">Male</h2><div class="grid" id="M"></div>
   <h2 id="fh">Female</h2><div class="grid" id="F"></div>
+  <h2 id="ah">AivisSpeech — listening only</h2>
+  <p class="muted" style="margin-top:-4px">More natural, but these voices <b>don't follow the dictionary accent</b> (tested: 1 of 9 patterns right vs VOICEVOX 3 of 3), so they're never used as the "correct pitch" reference on the practice page. Fine for reading passages.</p>
+  <div class="grid" id="A"></div>
 </main>
 <div class="bar"><span class="muted" id="count"></span><button class="primary" id="save">Save selection</button><span class="muted" id="saved"></span></div>
 <script>
@@ -67,7 +70,7 @@ async function loadTexts() {
 function card(v) {
   return `<div class="v ${v.keep ? "keep" : ""}" id="c${v.id}">
     <div class="name">${v.name}</div>
-    <div class="meta">${v.style} · ${v.f0} Hz</div>
+    <div class="meta">${v.style} · ${v.f0} Hz${v.engine === "aivis" ? ` · ${v.gender === "M" ? "male" : "female"}` : ""}</div>
     <div class="row"><button data-id="${v.id}">▶ Play</button>
       <label><input type="checkbox" data-id="${v.id}" ${v.keep ? "checked" : ""}> Keep</label></div></div>`;
 }
@@ -106,9 +109,10 @@ async function playVoice(b) {
 
 async function load() {
   cat = await (await fetch("/api/catalog")).json();
-  for (const g of ["M", "F"]) $(g).innerHTML = cat.filter(v => v.gender === g).map(card).join("");
-  $("mh").textContent = `Male (${cat.filter(v => v.gender === "M").length})`;
-  $("fh").textContent = `Female (${cat.filter(v => v.gender === "F").length})`;
+  for (const g of ["M", "F"]) $(g).innerHTML = cat.filter(v => v.gender === g && v.engine !== "aivis").map(card).join("");
+  $("A").innerHTML = cat.filter(v => v.engine === "aivis").map(card).join("");
+  $("mh").textContent = `Male (${cat.filter(v => v.gender === "M" && v.engine !== "aivis").length})`;
+  $("fh").textContent = `Female (${cat.filter(v => v.gender === "F" && v.engine !== "aivis").length})`;
   document.querySelectorAll("button[data-id]").forEach(b => b.onclick = () => playVoice(b));
   document.querySelectorAll("input[data-id]").forEach(c => c.onchange = () => {
     const v = cat.find(v => v.id == c.dataset.id); v.keep = c.checked;

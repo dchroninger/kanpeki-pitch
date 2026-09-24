@@ -146,3 +146,16 @@ All at full data (JSUT-4000 + JVS 70 train speakers × 90 sentences) unless note
 `tts.natural_fix`: keep VOICEVOX's predicted mora pitches; per phrase, blend toward flat dictionary levels only as far as needed (w ∈ {0, .25, .5, .75, 1}) until no L→H step rises < 1 st, no H→L step falls < 1 st, and no same-level step falls > 1.5 st.
 
 Graded by the ensemble (20 demo sentences × 2 voices, 182 phrases): raw VOICEVOX ok 46.7 / **wrong 9.3** / unsure 44.0 · flat-enforced 43.4 / **9.3** / 47.3 · **natural-fix 42.9 / 4.9 / 52.2**. Blend weights: 32% untouched, 17% light, 42% at 0.75, 9% full. The rules may be stricter than real Tokyo speech (weak initial rise phrase-medially) — candidate for loosening. TTS audio of any kind is ~50% "unsure" for the grader: don't use TTS to evaluate the grader.
+
+## AivisSpeech (Style-Bert-VITS2) as a reference voice — rejected for accent, kept for listening (2026-09-24)
+
+AivisSpeech Engine 1.2.0 (macOS arm64 build, local HTTP on :10101) accepts our AquesTalk kana (`/accent_phrases?is_kana=true`) and keeps our accent *positions*, but exposes no per-mora pitch, and its model largely overrides them. Carrier sentence これは[箸/橋/端]がよく見える, accent of はしが forced to 1/2/0, per-mora pitch measured with our aligner + SwiftF0:
+
+| Voice | HLL (1) | LHL (2) | LHH (0) |
+|---|---|---|---|
+| VOICEVOX 玄野武宏 | ✓ | ✓ | ✓ |
+| Aivis 阿井田 茂 | ✗ | ✗ | ✓ |
+| Aivis まお | ✗ | ✗ | ✗ |
+| Aivis コハク | ✗ | ✗ | ✗ |
+
+**Conclusion:** AivisSpeech sounds more natural but cannot be the "correct pitch" reference. Demo: Aivis voices are listening-only (voice picker), excluded from practice references. Also: the 165 Hz pitch rule mislabels high male voices (阿井田 茂 ≈ 190 Hz, confirmed with Praat) — gender needs a manual override.
