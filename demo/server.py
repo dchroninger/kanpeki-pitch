@@ -72,7 +72,10 @@ BY_ID = {v["id"]: v for v in CATALOG}
 KEEP = ROOT / "demo" / "voices_keep.json"
 DEFAULT_KEEP = [2, 3, 11, 13, 16, 14]
 kept = lambda: json.load(open(KEEP)) if KEEP.exists() else DEFAULT_KEEP
-SAMPLE, _ = accent.analyze("今日はいい天気ですね。明日は雨が降るそうです。")
+# 夏目漱石『吾輩は猫である』冒頭 (1905, public domain, Aozora Bunko)
+SAMPLE_TEXT = "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。"
+SAMPLE = [accent.analyze(x)[0] for x in SAMPLE_TEXT.split("。") if x]
+_sample_cache = {}
 
 app = FastAPI()
 
@@ -118,10 +121,15 @@ async def set_keep(request: Request):
 
 @app.get("/api/sample")
 def sample(voice: int):
-    v = BY_ID[voice]; tts.load(v["vvm"])
-    wav, sr = tts.speak(SAMPLE, voice, speed=0.95, enforce="natural")
-    buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
-    return Response(buf.getvalue(), media_type="audio/wav")
+    if voice not in _sample_cache:
+        v = BY_ID[voice]; tts.load(v["vvm"])
+        parts, sr = [], 24000
+        for sentence in SAMPLE:  # one sentence at a time, with a breath between
+            wav, sr = tts.speak(sentence, voice, speed=0.95, enforce="natural")
+            parts += [wav, np.zeros(int(0.35 * sr), np.float32)]
+        buf = io.BytesIO(); sf.write(buf, np.concatenate(parts), sr, format="WAV")
+        _sample_cache[voice] = buf.getvalue()
+    return Response(_sample_cache[voice], media_type="audio/wav")
 
 
 @app.get("/api/tts")

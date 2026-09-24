@@ -38,8 +38,11 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
 <main>
   <header>
     <h1>Voice Picker</h1>
-    <span class="muted">Sample: 今日はいい天気ですね。明日は雨が降るそうです。 · <a href="/">← back to practice</a></span>
+    <span class="muted"><a href="/">← back to practice</a></span>
   </header>
+  <blockquote style="margin:20px 0 8px; padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:12px; font-size:18px; line-height:1.9">
+    吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
+    <div class="muted" style="margin-top:6px">夏目漱石『吾輩は猫である』(1905) · public domain</div></blockquote>
   <p class="muted">Split by measured pitch (median F0; under 165 Hz = male). Borderline voices are worth a listen either way. First play of a voice takes a second or two to load.</p>
   <h2 id="mh">Male</h2><div class="grid" id="M"></div>
   <h2 id="fh">Female</h2><div class="grid" id="F"></div>
