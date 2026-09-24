@@ -74,7 +74,21 @@ DEFAULT_KEEP = [2, 3, 11, 13, 16, 14]
 kept = lambda: json.load(open(KEEP)) if KEEP.exists() else DEFAULT_KEEP
 # 夏目漱石『吾輩は猫である』冒頭 (1905, public domain, Aozora Bunko)
 SAMPLE_TEXT = "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。"
-SAMPLE = [accent.analyze(x)[0] for x in SAMPLE_TEXT.split("。") if x]
+PRIVATE = ROOT / "demo" / "private"   # gitignored: personal texts (e.g. OCR of a book you own)
+
+
+def texts_available():
+    out = [dict(key="soseki", title="吾輩は猫である (夏目漱石)", text=SAMPLE_TEXT)]
+    for f in sorted(PRIVATE.glob("*.txt")):
+        lines = f.read_text(encoding="utf-8").strip().splitlines()
+        out.append(dict(key=f.stem, title=lines[0], text="".join(lines[1:]).strip()))
+    return out
+
+
+def sentences(text):
+    return [accent.analyze(x)[0] for x in re.split(r"[。！？!?\n]", text) if x.strip()]
+
+
 _sample_cache = {}
 
 app = FastAPI()
@@ -119,17 +133,26 @@ async def set_keep(request: Request):
     return dict(saved=len(ids))
 
 
+@app.get("/api/texts")
+def texts():
+    return [dict(key=t["key"], title=t["title"], text=t["text"]) for t in texts_available()]
+
+
 @app.get("/api/sample")
-def sample(voice: int):
-    if voice not in _sample_cache:
+def sample(voice: int, key: str = "soseki", text: str = ""):
+    if text:
+        body, ck = text[:600], ("custom", voice, text[:600])
+    else:
+        body = next(t["text"] for t in texts_available() if t["key"] == key); ck = (key, voice, body)
+    if ck not in _sample_cache:
         v = BY_ID[voice]; tts.load(v["vvm"])
         parts, sr = [], 24000
-        for sentence in SAMPLE:  # one sentence at a time, with a breath between
+        for sentence in sentences(body):  # one sentence at a time, with a breath between
             wav, sr = tts.speak(sentence, voice, speed=0.95, enforce="natural")
             parts += [wav, np.zeros(int(0.35 * sr), np.float32)]
         buf = io.BytesIO(); sf.write(buf, np.concatenate(parts), sr, format="WAV")
-        _sample_cache[voice] = buf.getvalue()
-    return Response(_sample_cache[voice], media_type="audio/wav")
+        _sample_cache[ck] = buf.getvalue()
+    return Response(_sample_cache[ck], media_type="audio/wav")
 
 
 @app.get("/api/tts")

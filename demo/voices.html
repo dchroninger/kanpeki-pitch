@@ -40,9 +40,14 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
     <h1>Voice Picker</h1>
     <span class="muted"><a href="/">← back to practice</a></span>
   </header>
-  <blockquote style="margin:20px 0 8px; padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:12px; font-size:18px; line-height:1.9">
-    吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。
-    <div class="muted" style="margin-top:6px">夏目漱石『吾輩は猫である』(1905) · public domain</div></blockquote>
+  <div style="margin:20px 0 8px; padding:14px 18px; background:var(--card); border:1px solid var(--border); border-radius:12px">
+    <div class="row" style="gap:10px; flex-wrap:wrap; justify-content:flex-start">
+      <span class="muted">Sample text</span><select id="textsel" style="font:inherit;font-size:14px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink)"></select>
+    </div>
+    <textarea id="textbox" rows="4" style="width:100%; margin-top:10px; font:inherit; font-size:17px; line-height:1.8; padding:10px;
+      border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); resize:vertical"></textarea>
+    <div class="muted" id="textnote">Edit freely — the voices read whatever is in the box (up to ~600 characters).</div>
+  </div>
   <p class="muted">Split by measured pitch (median F0; under 165 Hz = male). Borderline voices are worth a listen either way. First play of a voice takes a second or two to load.</p>
   <h2 id="mh">Male</h2><div class="grid" id="M"></div>
   <h2 id="fh">Female</h2><div class="grid" id="F"></div>
@@ -50,7 +55,13 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
 <div class="bar"><span class="muted" id="count"></span><button class="primary" id="save">Save selection</button><span class="muted" id="saved"></span></div>
 <script>
 const $ = id => document.getElementById(id);
-let player = null, cat = [];
+let player = null, cat = [], texts = [];
+async function loadTexts() {
+  texts = await (await fetch("/api/texts")).json();
+  $("textsel").innerHTML = texts.map(t => `<option value="${t.key}">${t.title}</option>`).join("") + `<option value="">(custom)</option>`;
+  const pick = () => { const t = texts.find(x => x.key === $("textsel").value); $("textbox").value = t ? t.text : ""; };
+  $("textsel").onchange = pick; pick();
+}
 function card(v) {
   return `<div class="v ${v.keep ? "keep" : ""}" id="c${v.id}">
     <div class="name">${v.name}</div>
@@ -71,7 +82,9 @@ async function load() {
     document.querySelectorAll("button.playing").forEach(x => x.classList.remove("playing"));
     if (player) player.pause();
     b.classList.add("playing");
-    player = new Audio(`/api/sample?voice=${b.dataset.id}`);
+    const t = $("textbox").value.trim(), orig = texts.find(x => x.key === $("textsel").value);
+    player = new Audio(orig && t === orig.text ? `/api/sample?voice=${b.dataset.id}&key=${orig.key}`
+                                              : `/api/sample?voice=${b.dataset.id}&text=${encodeURIComponent(t)}`);
     player.onended = player.onpause = () => b.classList.remove("playing");
     player.play();
   });
@@ -86,7 +99,7 @@ $("save").onclick = async () => {
   const r = await (await fetch("/api/voices/keep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ids) })).json();
   $("saved").textContent = `Saved ${r.saved} ✓`;
 };
-load();
+loadTexts().then(load);
 </script>
 </body>
 </html>
