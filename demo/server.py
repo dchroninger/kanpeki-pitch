@@ -103,20 +103,32 @@ FUNCTION_POS = {"助詞", "助動詞"}
 JM = pickle.load(open(ROOT / "jmdict_index.pkl", "rb"))   # JMdict (EDRDG, CC BY-SA 4.0)
 
 
-def gloss(word, read_kata=""):
-    """English gloss for a dictionary-form word; prefers the entry whose reading matches, then common words."""
+GLOSS_PIN = {"いる": "to be (of people/animals); to exist; to stay"}   # very common kana words JMdict ranking gets wrong
+POS_MAP = {"動詞": "verb", "名詞": "noun", "形容詞": "adjective", "副詞": "adverb", "連体詞": "pre-noun", "形容動詞": "adjectival"}
+
+
+def gloss(word, read_kata="", pos=""):
+    """English gloss for a dictionary-form word. Filters by part of speech, ranks by reading match, then
+    frequency. A kana-written word that is ambiguous between several common kanji words shows the top 3."""
+    if word in GLOSS_PIN:
+        return GLOSS_PIN[word]
     cands = JM.get(word)
     if not cands:
         return ""
+    want = POS_MAP.get(pos, "")
+    if want and any(want in c[5] for c in cands):
+        cands = [c for c in cands if want in c[5]]
     rh = hira(read_kata)
-    ranked = [c for _, c in sorted(enumerate(cands), key=lambda ic: (not (rh in ic[1][0]), not ic[1][2], ic[0]))]
-    kana_only = not KANJI.search(word)
-    common_kanji = [c for c in ranked if c[2] and c[3]]
-    if kana_only and len({c[3][0] for c in common_kanji}) > 1:
-        # written in kana, several common words share this reading: show the top two with their kanji
-        return " · ".join(f"{c[3][0]}: {'; '.join(c[1][:2])}" for c in common_kanji[:2]) + " …"
+    ranked = sorted(cands, key=lambda c: (not (rh and rh in c[0]), not c[2], c[4]))
+    if not KANJI.search(word):
+        # a kana word that JMdict says is usually written in kana (ある, する, ...) is not ambiguous
+        uk = [c for c in ranked if c[6] and c[2]]
+        if uk:
+            return "; ".join(uk[0][1])
+        common_kanji = [c for c in ranked if c[2] and c[3]]
+        if len({c[3][0] for c in common_kanji}) > 1:
+            return " · ".join(f"{c[3][0]}: {'; '.join(c[1][:2])}" for c in common_kanji[:3]) + " (kana — could be any)"
     return "; ".join(ranked[0][1])
-PATTERN_NAMES = {"heiban": "平板型", "atamadaka": "頭高型", "nakadaka": "中高型", "odaka": "尾高型"}
 
 
 def phrase_units(text):
@@ -153,7 +165,7 @@ def unit_glosses(units):
             if pg1 in ("非自立", "接尾") or pos in ("接頭詞",):
                 continue
             base = orig if orig and orig != "*" else string
-            g = gloss(base, read if base == string else "")
+            g = gloss(base, read if base == string else "", pos)
             if g:
                 out.append((base, g))
     return out
