@@ -131,6 +131,9 @@ def gloss(word, read_kata="", pos=""):
     return "; ".join(ranked[0][1])
 
 
+PATTERN_NAMES = {"heiban": "平板型", "atamadaka": "頭高型", "nakadaka": "中高型", "odaka": "尾高型"}
+
+
 def phrase_units(text):
     """Per accent phrase: list of units [surface, morae, is_content]. Consecutive content nodes merge into one
     unit (compounds like 方向感覚 are one accent unit); particles / auxiliaries are their own units."""
