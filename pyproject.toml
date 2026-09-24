@@ -1,0 +1,30 @@
+[project]
+name = "spike"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Dave Chroninger", email = "dchroninger@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "huggingface-hub>=1.33.0",
+    "numpy>=2.5.3",
+    "praat-parselmouth>=0.4.7",
+    "pyopenjtalk-plus>=0.4.1.post9",
+    "soundfile>=0.14.0",
+    "swift-f0>=0.2.0",
+    "torch>=2.14.0",
+    "torchaudio>=2.11.0",
+    "transformers>=5.17.0",
+    "voicevox-core",
+]
+
+[project.scripts]
+spike = "spike:main"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+voicevox-core = { path = "vendor/voicevox/voicevox_core-0.17.0-cp310-abi3-macosx_11_0_arm64.whl" }
