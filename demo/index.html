@@ -73,6 +73,12 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 
   <section class="card">
     <div id="sentence" class="sentence">…</div>
+    <div id="guidewrap" hidden>
+      <div class="rowlabel" style="margin-top:10px">Pitch guide</div>
+      <div class="pitchrow" id="guide"></div>
+    </div>
+    <div class="rowlabel" style="margin-top:18px">Listen &amp; shadow</div>
+    <div class="voices" id="voicesTop"></div>
     <div class="controls">
       <button id="rec" class="rec">● Record</button>
       <button id="mine" disabled>▶ My recording</button>
@@ -85,7 +91,7 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
   <section class="card" id="results" hidden>
     <div class="score" id="score"></div>
     <div class="rowlabel">Expected</div>
-    <div class="voices" id="voices"></div>
+    <div class="voices" id="voicesRes"></div>
     <div class="pitchrow" id="expected"></div>
     <div class="rowlabel">What you said</div>
     <div class="pitchrow heard" id="heard"></div>
@@ -97,17 +103,26 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 
 <script>
 const $ = id => document.getElementById(id);
-let cur = null, recording = false, ctx, proc, src, stream, chunks = [], lastWav = null;
+let attempts = 0, cur = null, recording = false, ctx, proc, src, stream, chunks = [], lastWav = null;
 
+let VOICES = [];
 async function loadVoices() {
-  const vs = await (await fetch("/api/voices")).json();
-  $("voices").innerHTML = vs.map(v => `<button data-voice="${v.id}">▶ ${v.name}</button>`).join("");
-  $("voices").querySelectorAll("button").forEach(b => b.onclick = () => {
-    $("voices").querySelectorAll("button").forEach(x => x.classList.remove("playing"));
-    b.classList.add("playing");
-    play(`/api/tts?id=${cur.id}&voice=${b.dataset.voice}&speed=${$("speed").value}`);
-    player.onended = player.onpause = () => b.classList.remove("playing");
-  });
+  VOICES = await (await fetch("/api/voices")).json();
+  renderVoices();
+}
+function renderVoices() {
+  for (const box of [$("voicesTop"), $("voicesRes")]) {
+    box.innerHTML = VOICES.map(v => `<button data-voice="${v.id}">▶ ${v.name}</button>`).join("");
+    box.querySelectorAll("button").forEach(b => b.onclick = () => {
+      const was = b.classList.contains("playing");
+      document.querySelectorAll(".voices button").forEach(x => x.classList.remove("playing"));
+      if (player) player.pause();
+      if (was) return;                       // second click = stop
+      b.classList.add("playing");
+      play(`/api/tts?id=${cur.id}&voice=${b.dataset.voice}&speed=${$("speed").value}`);
+      player.onended = player.onpause = () => b.classList.remove("playing");
+    });
+  }
 }
 
 async function next() {
@@ -115,6 +130,8 @@ async function next() {
   $("sentence").innerHTML = cur.furigana.map(([s, r]) => r ? `<ruby>${s}<rt>${r}</rt></ruby>` : s).join("");
   $("results").hidden = true; $("error").hidden = true; $("status").textContent = "";
   $("mine").disabled = true; lastWav = null; recBlob = null;
+  attempts = 0; $("guidewrap").hidden = true;
+  $("guide").innerHTML = cur.phrases.map(p => pitchHTML(p.pattern, p.moras)).join("");
   $("rec").disabled = false; $("rec").innerHTML = "● Record";
 }
 
@@ -138,6 +155,7 @@ function show(res) {
 // ---- recording: MediaRecorder (runs off the main thread, no dropouts) -> decode -> 16 kHz WAV
 let mediaRec = null, recBlob = null;
 async function startRec() {
+  if (attempts >= 1) $("guidewrap").hidden = false;   // pitch guide from the 2nd attempt on
   stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
   chunks = [];
   mediaRec = new MediaRecorder(stream);
@@ -160,6 +178,7 @@ function wavBlob(samples, rate) {
 
 async function stopRec() {
   recording = false;
+  attempts++;
   const stopped = new Promise(r => mediaRec.onstop = r);
   mediaRec.stop(); await stopped;
   stream.getTracks().forEach(t => t.stop());
