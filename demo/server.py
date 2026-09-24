@@ -141,7 +141,7 @@ async def set_keep(request: Request):
 
 
 @app.get("/api/texts")
-def texts():
+def api_texts():
     return [dict(key=t["key"], title=t["title"], text=t["text"]) for t in texts_available()]
 
 
