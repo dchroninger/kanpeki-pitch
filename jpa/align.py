@@ -19,6 +19,7 @@ FRAME_S = 0.02  # wav2vec2 stride
 
 _model = None
 _fe = None
+DEVICE = "cpu"
 vocab = KanaVocab()
 
 
@@ -26,7 +27,7 @@ def _load():
     global _model, _fe
     if _model is None:
         from transformers import Wav2Vec2FeatureExtractor
-        _model = load_checkpoint(str(CKPT)).eval()
+        _model = load_checkpoint(str(CKPT)).eval().to(DEVICE)
         _fe = Wav2Vec2FeatureExtractor.from_pretrained("reazon-research/japanese-wav2vec2-large")
     return _model, _fe
 
@@ -42,8 +43,8 @@ def logprobs(audio16: np.ndarray) -> np.ndarray:
     model, fe = _load()
     x = fe(audio16, sampling_rate=16000, return_tensors="pt")
     with torch.no_grad():
-        lg = model(x.input_values)["kana_logits"][0]
-    return lg.log_softmax(-1).numpy()
+        lg = model(x.input_values.to(DEVICE))["kana_logits"][0]
+    return lg.log_softmax(-1).float().cpu().numpy()
 
 
 def transcribe(lp: np.ndarray) -> str:

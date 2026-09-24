@@ -1,0 +1,4 @@
+train phrases 63051  test JSUT 6911  JVS 1890  (4s)
+AUG=True BAL=False  JSUT 28063 / JVS 34988 phrases
+epoch 0 loss 0.405 (152s)
+epoch 1 loss 0.273 (291s)

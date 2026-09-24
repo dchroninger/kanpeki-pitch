@@ -79,6 +79,10 @@ def analyze(text: str, njd: list | None = None) -> tuple[list[Phrase], list]:
         if not moras:
             continue
         if n["chain_flag"] == 1 and phrases:
+            # a node starting with small kana (e.g. ュ from bad segmentation) joins the previous mora
+            if moras[0].kana[0] in SMALL and phrases[-1].moras:
+                phrases[-1].moras[-1].kana += moras[0].kana
+                moras = moras[1:]
             phrases[-1].moras += moras
             phrases[-1].surface += n["string"]
         else:
