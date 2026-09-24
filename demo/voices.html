@@ -121,7 +121,10 @@ $("save").onclick = async () => {
   const r = await (await fetch("/api/voices/keep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ids) })).json();
   $("saved").textContent = `Saved ${r.saved} ✓`;
 };
-$("speed").oninput = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
+try { const v = localStorage.getItem("speed"); if (v) $("speed").value = v; } catch (e) {}
+const showSpeed = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
+$("speed").oninput = () => { showSpeed(); try { localStorage.setItem("speed", $("speed").value); } catch (e) {} };
+showSpeed();
 loadTexts().then(load);
 </script>
 </body>

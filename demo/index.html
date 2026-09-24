@@ -77,6 +77,7 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
       <button id="rec" class="rec">● Record</button>
       <button id="mine" disabled>▶ My recording</button>
       <span id="status" class="muted"></span>
+      <span class="muted" style="margin-left:auto">Voice speed <input type="range" id="speed" min="0.6" max="1.2" step="0.05" value="0.9" style="width:120px;vertical-align:middle"> <span id="speedval">0.90×</span></span>
     </div>
     <div id="error" class="error" hidden></div>
   </section>
@@ -85,7 +86,6 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
     <div class="score" id="score"></div>
     <div class="rowlabel">Expected</div>
     <div class="voices" id="voices"></div>
-    <div class="muted" style="margin:-4px 0 14px">Speed <input type="range" id="speed" min="0.6" max="1.2" step="0.05" value="0.9" style="width:120px;vertical-align:middle"> <span id="speedval">0.90×</span></div>
     <div class="pitchrow" id="expected"></div>
     <div class="rowlabel">What you said</div>
     <div class="pitchrow heard" id="heard"></div>
@@ -186,7 +186,11 @@ function play(src) { if (player) player.pause(); player = new Audio(src); player
 $("rec").onclick = () => recording ? stopRec() : startRec();
 $("mine").onclick = () => recBlob && play(URL.createObjectURL(recBlob));
 $("next").onclick = next;
-$("speed").oninput = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
+// remember the chosen speed across sentences and reloads
+try { const v = localStorage.getItem("speed"); if (v) $("speed").value = v; } catch (e) {}
+const showSpeed = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
+$("speed").oninput = () => { showSpeed(); try { localStorage.setItem("speed", $("speed").value); } catch (e) {} };
+showSpeed();
 loadVoices().then(next);
 </script>
 </body>
