@@ -100,6 +100,22 @@ app = FastAPI()
 
 
 FUNCTION_POS = {"助詞", "助動詞"}
+JM = pickle.load(open(ROOT / "jmdict_index.pkl", "rb"))   # JMdict (EDRDG, CC BY-SA 4.0)
+
+
+def gloss(word, read_kata=""):
+    """English gloss for a dictionary-form word; prefers the entry whose reading matches, then common words."""
+    cands = JM.get(word)
+    if not cands:
+        return ""
+    rh = hira(read_kata)
+    ranked = [c for _, c in sorted(enumerate(cands), key=lambda ic: (not (rh in ic[1][0]), not ic[1][2], ic[0]))]
+    kana_only = not KANJI.search(word)
+    common_kanji = [c for c in ranked if c[2] and c[3]]
+    if kana_only and len({c[3][0] for c in common_kanji}) > 1:
+        # written in kana, several common words share this reading: show the top two with their kanji
+        return " · ".join(f"{c[3][0]}: {'; '.join(c[1][:2])}" for c in common_kanji[:2]) + " …"
+    return "; ".join(ranked[0][1])
 PATTERN_NAMES = {"heiban": "平板型", "atamadaka": "頭高型", "nakadaka": "中高型", "odaka": "尾高型"}
 
 
@@ -111,14 +127,35 @@ def phrase_units(text):
         if n["pos"] == "記号" or not n["pron"] or n["pron"] in ("、", "。"):
             continue
         k, content = len(accent.split_moras(n["pron"])), n["pos"] not in FUNCTION_POS
+        node = (n["string"], n["orig"], n["read"], n.get("pos_group1", ""), n["pos"])
         if n["chain_flag"] == 1 and out:
             last = out[-1][-1]
             if content and last[2]:
-                last[0] += n["string"]; last[1] += k
+                last[0] += n["string"]; last[1] += k; last[3].append(node)
             else:
-                out[-1].append([n["string"], k, content])
+                out[-1].append([n["string"], k, content, [node]])
         else:
-            out.append([[n["string"], k, content]])
+            out.append([[n["string"], k, content, [node]]])
+    return out
+
+
+def unit_glosses(units):
+    """[(word, meaning)] for the content units of a phrase. Compounds are looked up whole first."""
+    out = []
+    for surf, k, content, nodes in units:
+        if not content:
+            continue
+        if len(nodes) > 1:
+            g = gloss(surf, "".join(x[2] for x in nodes))
+            if g:
+                out.append((surf, g)); continue
+        for string, orig, read, pg1, pos in nodes:
+            if pg1 in ("非自立", "接尾") or pos in ("接頭詞",):
+                continue
+            base = orig if orig and orig != "*" else string
+            g = gloss(base, read if base == string else "")
+            if g:
+                out.append((base, g))
     return out
 
 
@@ -127,12 +164,12 @@ def classify(acc, units):
     if acc == 0:
         return "heiban", "", ""
     pos = 0
-    for i, (surf, k, content) in enumerate(units):
+    for i, (surf, k, content, *_) in enumerate(units):
         if pos < acc <= pos + k:
             local = acc - pos
             if not content:  # the drop sits on a particle / ending
                 return None, surf, f"accent carried by the ending 〜{surf}"
-            multi = sum(u[2] for u in units) > 1
+            multi = sum(bool(u[2]) for u in units) > 1
             t = "atamadaka" if local == 1 else "odaka" if local == k else "nakadaka"
             return t, (surf if multi else ""), ""
         pos += k
@@ -144,11 +181,11 @@ def sentence_payload(uid):
     units = phrase_units(texts[uid])
     phrases = []
     for i, p in enumerate(gold):
-        us = units[i] if i < len(units) else [["".join(m.kana for m in p.moras), len(p.moras), True]]
+        us = units[i] if i < len(units) else [["".join(m.kana for m in p.moras), len(p.moras), True, []]]
         t, word, note = classify(p.acc, us)
         phrases.append(dict(moras=[hira(m.kana) for m in p.moras], acc=p.acc, pattern=p.pattern,
                             surface="".join(u[0] for u in us), type=t or "", type_kanji=PATTERN_NAMES.get(t, ""),
-                            word=word, note=note))
+                            word=word, note=note, glosses=unit_glosses(us)))
     return dict(id=uid, text=texts[uid], furigana=furigana(texts[uid]), phrases=phrases)
 
 

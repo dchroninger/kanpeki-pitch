@@ -60,6 +60,10 @@ button:disabled { opacity: .5; cursor: default; }
 .tip b { display: block; font-size: 15px; }
 .tip i { font-style: normal; opacity: .75; }
 .tipnote { display: block; opacity: .7; font-size: 12px; }
+.tipsep { display: block; border-top: 1px solid color-mix(in srgb, var(--bg) 30%, transparent); margin: 6px 0 4px; }
+.tipgloss { display: block; white-space: normal; max-width: 300px; font-size: 12.5px; }
+.tipgloss .tw { opacity: .7; margin-right: 6px; }
+.tip { white-space: normal; min-width: 160px; max-width: 320px; }
 .phrase.hastip:hover .tip, .phrase.hastip:focus .tip { display: block; }
 .badge { position: absolute; top: -12px; right: -6px; font-size: 11px; color: var(--unsure); }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 22px; font-size: 12px; color: var(--muted); }
@@ -148,8 +152,9 @@ async function next() {
 
 function tipHTML(p) {
   const line = p.type ? `${p.word ? `${p.word}: ` : ""}${p.type_kanji} <i>(${p.type})</i> · [${p.acc}]` : `[${p.acc}]`;
+  const gl = (p.glosses || []).map(([w, g]) => `<span class="tipgloss"><span class="tw">${w}</span>${g}</span>`).join("");
   return `<span class="tip"><b>${p.surface}</b><span class="tipline">${line}</span>`
-    + (p.note ? `<span class="tipnote">${p.note}</span>` : "") + `</span>`;
+    + (p.note ? `<span class="tipnote">${p.note}</span>` : "") + (gl ? `<span class="tipsep"></span>${gl}` : "") + `</span>`;
 }
 function pitchHTML(pattern, moras, cls = "", bad = [], tip = null) {
   return `<span class="phrase ${cls}${tip ? " hastip" : ""}" tabindex="${tip ? 0 : -1}">` + (tip ? tipHTML(tip) : "") + moras.map((m, j) => {
