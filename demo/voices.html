@@ -46,7 +46,7 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
     </div>
     <textarea id="textbox" rows="4" style="width:100%; margin-top:10px; font:inherit; font-size:17px; line-height:1.8; padding:10px;
       border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--ink); resize:vertical"></textarea>
-    <div class="muted" id="textnote">Edit freely — the voices read whatever is in the box (up to ~600 characters).</div>
+    <div class="muted" id="textnote">Edit freely — the voices read whatever is in the box. Audio streams sentence by sentence; click again to stop.</div>
   </div>
   <p class="muted">Split by measured pitch (median F0; under 165 Hz = male). Borderline voices are worth a listen either way. First play of a voice takes a second or two to load.</p>
   <h2 id="mh">Male</h2><div class="grid" id="M"></div>
@@ -73,21 +73,40 @@ function count() {
   const k = cat.filter(v => v.keep);
   $("count").textContent = `${k.length} kept (${k.filter(v => v.gender === "M").length} male, ${k.filter(v => v.gender === "F").length} female)`;
 }
+// ---- streamed playback: fetch sentence i+1 while sentence i plays
+let session = 0;
+function stopAll() {
+  session++;
+  if (player) { player.onended = null; player.pause(); player = null; }
+  document.querySelectorAll("button.playing").forEach(x => { x.classList.remove("playing"); x.textContent = "▶ Play"; });
+}
+async function playVoice(b) {
+  const wasPlaying = b.classList.contains("playing");
+  stopAll();
+  if (wasPlaying) return;                       // second click = stop
+  const my = session, voice = b.dataset.id;
+  b.classList.add("playing"); b.textContent = "■ Stop";
+  const t = $("textbox").value.trim(), orig = texts.find(x => x.key === $("textsel").value);
+  const body = orig && t === orig.text ? { key: orig.key } : { text: t };
+  const sents = await (await fetch("/api/parts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+  const get = i => fetch(`/api/part?voice=${voice}&s=${encodeURIComponent(sents[i])}`).then(r => r.blob());
+  let next = sents.length ? get(0) : null;
+  for (let i = 0; i < sents.length && my === session; i++) {
+    const blob = await next;
+    next = i + 1 < sents.length ? get(i + 1) : null;   // prefetch while this one plays
+    if (my !== session) return;
+    player = new Audio(URL.createObjectURL(blob));
+    await new Promise(res => { player.onended = res; player.play(); });
+  }
+  if (my === session) stopAll();
+}
+
 async function load() {
   cat = await (await fetch("/api/catalog")).json();
   for (const g of ["M", "F"]) $(g).innerHTML = cat.filter(v => v.gender === g).map(card).join("");
   $("mh").textContent = `Male (${cat.filter(v => v.gender === "M").length})`;
   $("fh").textContent = `Female (${cat.filter(v => v.gender === "F").length})`;
-  document.querySelectorAll("button[data-id]").forEach(b => b.onclick = () => {
-    document.querySelectorAll("button.playing").forEach(x => x.classList.remove("playing"));
-    if (player) player.pause();
-    b.classList.add("playing");
-    const t = $("textbox").value.trim(), orig = texts.find(x => x.key === $("textsel").value);
-    player = new Audio(orig && t === orig.text ? `/api/sample?voice=${b.dataset.id}&key=${orig.key}`
-                                              : `/api/sample?voice=${b.dataset.id}&text=${encodeURIComponent(t)}`);
-    player.onended = player.onpause = () => b.classList.remove("playing");
-    player.play();
-  });
+  document.querySelectorAll("button[data-id]").forEach(b => b.onclick = () => playVoice(b));
   document.querySelectorAll("input[data-id]").forEach(c => c.onchange = () => {
     const v = cat.find(v => v.id == c.dataset.id); v.keep = c.checked;
     $("c" + v.id).classList.toggle("keep", c.checked); $("saved").textContent = ""; count();

@@ -141,6 +141,36 @@ def texts():
     return [dict(key=t["key"], title=t["title"], text=t["text"]) for t in texts_available()]
 
 
+@app.post("/api/parts")
+async def parts(request: Request):
+    """Split a text (by key, or custom) into speakable sentences, pronunciation overrides applied."""
+    d = await request.json()
+    if d.get("key"):
+        t = next(t for t in texts_available() if t["key"] == d["key"])
+        body = t["text"]
+        for a, b in t.get("subs", []):
+            body = body.replace(a, b)
+    else:
+        body = d.get("text", "")[:5000]
+    return [x.strip() + "。" for x in re.split(r"[。！？!?\n]", body) if x.strip()]
+
+
+_part_cache = {}
+
+
+@app.get("/api/part")
+def part(voice: int, s: str):
+    """One sentence of audio: small, so playback can start after ~1 s and stream the rest."""
+    k = (voice, s)
+    if k not in _part_cache:
+        v = BY_ID[voice]; tts.load(v["vvm"])
+        wav, sr = tts.speak(accent.analyze(s)[0], voice, speed=0.95, enforce="natural")
+        wav = np.concatenate([wav, np.zeros(int(0.3 * sr), np.float32)])
+        buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
+        _part_cache[k] = buf.getvalue()
+    return Response(_part_cache[k], media_type="audio/wav")
+
+
 @app.get("/api/sample")
 def sample(voice: int, key: str = "soseki", text: str = ""):
     if text:
