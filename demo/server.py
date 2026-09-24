@@ -66,7 +66,13 @@ if Path(SEQ).exists():
                  t=np.linspace(0, .3, 20), hz=np.full(20, 200.0), conf=np.ones(20))
     net = sm.Net(next(sm.utt_phrases(dummy))[1].shape[1]); net.load_state_dict(torch.load(SEQ)); net.eval()
 print(f"tree={TREE} seq={SEQ if net else 'none'} device={align.DEVICE}", flush=True)
-VOICES = [("0", 2, "四国めたん"), ("0", 3, "ずんだもん"), ("4", 11, "玄野武宏"), ("15", 13, "青山龍星"), ("2", 16, "九州そら"), ("1", 14, "冥鳴ひまり")]
+import json
+CATALOG = json.load(open(ROOT / "voice_catalog_neutral.json"))          # one neutral style per character
+BY_ID = {v["id"]: v for v in CATALOG}
+KEEP = ROOT / "demo" / "voices_keep.json"
+DEFAULT_KEEP = [2, 3, 11, 13, 16, 14]
+kept = lambda: json.load(open(KEEP)) if KEEP.exists() else DEFAULT_KEEP
+SAMPLE, _ = accent.analyze("今日はいい天気ですね。明日は雨が降るそうです。")
 
 app = FastAPI()
 
@@ -89,13 +95,38 @@ def sentence():
 
 @app.get("/api/voices")
 def voices():
-    return [dict(id=sid, name=name) for _, sid, name in VOICES]
+    return [dict(id=i, name=BY_ID[i]["name"], gender=BY_ID[i]["gender"]) for i in kept() if i in BY_ID]
+
+
+@app.get("/voices")
+def voices_page():
+    return FileResponse(ROOT / "demo" / "voices.html")
+
+
+@app.get("/api/catalog")
+def catalog():
+    k = set(kept())
+    return [dict(v, keep=v["id"] in k) for v in CATALOG]
+
+
+@app.post("/api/voices/keep")
+async def set_keep(request: Request):
+    ids = [int(i) for i in await request.json()]
+    json.dump(ids, open(KEEP, "w"))
+    return dict(saved=len(ids))
+
+
+@app.get("/api/sample")
+def sample(voice: int):
+    v = BY_ID[voice]; tts.load(v["vvm"])
+    wav, sr = tts.speak(SAMPLE, voice, speed=0.95, enforce="natural")
+    buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
+    return Response(buf.getvalue(), media_type="audio/wav")
 
 
 @app.get("/api/tts")
 def speak(id: str, voice: int = 2, mode: str = "natural"):
-    vvm = next(v for v, sid, _ in VOICES if sid == voice)
-    tts.load(vvm)
+    tts.load(BY_ID[voice]["vvm"])
     wav, sr = tts.speak(parse_label(labels[id]), voice, speed=0.9, enforce={"natural": "natural", "enforce": True, "raw": "raw"}[mode])
     buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
     return Response(buf.getvalue(), media_type="audio/wav")
