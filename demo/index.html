@@ -55,6 +55,9 @@ button:disabled { opacity: .5; cursor: default; }
 .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; }
 .legend .l-ok::before { background: var(--ok); } .legend .l-bad::before { background: var(--bad); }
 .legend .l-un::before { background: var(--unsure); }
+.voices { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.voices button { padding: 5px 12px; font-size: 13px; }
+.voices button.playing { background: var(--line); border-color: var(--line); color: #fff; }
 .heardkana { margin-top: 18px; font-size: 13px; color: var(--muted); }
 .error { color: var(--bad); margin-top: 16px; }
 select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
@@ -66,7 +69,6 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 <main>
   <header>
     <h1>Pitch Accent Check <span class="muted">· throwaway demo</span></h1>
-    <label class="muted">Voice <select id="voice"></select></label>
   </header>
 
   <section class="card">
@@ -81,7 +83,8 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 
   <section class="card" id="results" hidden>
     <div class="score" id="score"></div>
-    <div class="rowlabel">Expected <button id="play">▶ Play correct pitch</button></div>
+    <div class="rowlabel">Expected</div>
+    <div class="voices" id="voices"></div>
     <div class="pitchrow" id="expected"></div>
     <div class="rowlabel">What you said</div>
     <div class="pitchrow heard" id="heard"></div>
@@ -97,7 +100,13 @@ let cur = null, recording = false, ctx, proc, src, stream, chunks = [], lastWav 
 
 async function loadVoices() {
   const vs = await (await fetch("/api/voices")).json();
-  $("voice").innerHTML = vs.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
+  $("voices").innerHTML = vs.map(v => `<button data-voice="${v.id}">▶ ${v.name}</button>`).join("");
+  $("voices").querySelectorAll("button").forEach(b => b.onclick = () => {
+    $("voices").querySelectorAll("button").forEach(x => x.classList.remove("playing"));
+    b.classList.add("playing");
+    play(`/api/tts?id=${cur.id}&voice=${b.dataset.voice}`);
+    player.onended = player.onpause = () => b.classList.remove("playing");
+  });
 }
 
 async function next() {
@@ -175,7 +184,6 @@ function play(src) { if (player) player.pause(); player = new Audio(src); player
 
 $("rec").onclick = () => recording ? stopRec() : startRec();
 $("mine").onclick = () => recBlob && play(URL.createObjectURL(recBlob));
-$("play").onclick = () => play(`/api/tts?id=${cur.id}&voice=${$("voice").value}`);
 $("next").onclick = next;
 loadVoices().then(next);
 </script>
