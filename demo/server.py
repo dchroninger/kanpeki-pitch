@@ -81,7 +81,10 @@ def texts_available():
     out = [dict(key="soseki", title="吾輩は猫である (夏目漱石)", text=SAMPLE_TEXT)]
     for f in sorted(PRIVATE.glob("*.txt")):
         lines = f.read_text(encoding="utf-8").strip().splitlines()
-        out.append(dict(key=f.stem, title=lines[0], text="".join(lines[1:]).strip()))
+        # "#tts A=B" lines: pronunciation fixes applied only when speaking (displayed text stays as printed)
+        subs = [l[5:].split("=", 1) for l in lines[1:] if l.startswith("#tts ")]
+        body = "".join(l for l in lines[1:] if not l.startswith("#tts ")).strip()
+        out.append(dict(key=f.stem, title=lines[0], text=body, subs=subs))
     return out
 
 
@@ -143,7 +146,11 @@ def sample(voice: int, key: str = "soseki", text: str = ""):
     if text:
         body, ck = text[:600], ("custom", voice, text[:600])
     else:
-        body = next(t["text"] for t in texts_available() if t["key"] == key); ck = (key, voice, body)
+        t = next(t for t in texts_available() if t["key"] == key)
+        body = t["text"]
+        for a, b in t.get("subs", []):
+            body = body.replace(a, b)
+        ck = (key, voice, body)
     if ck not in _sample_cache:
         v = BY_ID[voice]; tts.load(v["vvm"])
         parts, sr = [], 24000
