@@ -36,13 +36,27 @@ def voices(vvm: str) -> list[tuple[str, str, int]]:
         return [(c.name, s.name, s.id) for c in m.metas for s in c.styles if s.type == "talk"]
 
 
+_VOWEL_ROWS = {"ア": "アカサタナハマヤラワガザダバパャァ", "イ": "イキシチニヒミリギジヂビピィ",
+               "ウ": "ウクスツヌフムユルグズヅブプュゥヴ", "エ": "エケセテネヘメレゲゼデベペェ",
+               "オ": "オコソトノホモヨロヲゴゾドボポョォ"}
+_VOWEL = {ch: v for v, row in _VOWEL_ROWS.items() for ch in row}
+
+
+def _vv_mora(kana: str, prev: str) -> str:
+    """VOICEVOX kana rejects ー and ヲ: spell the long vowel out, ヲ as オ."""
+    if kana == "ー":
+        return _VOWEL.get(prev[-1:], "ウ") if prev else "ウ"
+    return kana.replace("ヲ", "オ")
+
+
 def to_kana(phrases: list[accent.Phrase], accs: list[int] | None = None) -> str:
     parts = []
     for i, p in enumerate(phrases):
         acc = p.acc if accs is None else accs[i]
         s = ""
         for mi, m in enumerate(p.moras):
-            s += ("_" if m.devoiced else "") + m.kana.replace("ヲ", "オ")
+            prev = _vv_mora(p.moras[mi - 1].kana, "") if mi else ""
+            s += ("_" if m.devoiced else "") + _vv_mora(m.kana, prev)
             # heiban is written as a mark on the last mora: within one phrase it is LH..H,
             # identical to odaka (they only differ on the following phrase)
             if mi + 1 == (acc or len(p.moras)):

@@ -42,14 +42,18 @@ def main(n_per_item=6):
             # wrong: pick a phrase, change its accent to a different, audibly-distinct one
             pi = rng.randrange(len(phrases))
             n = len(phrases[pi].moras)
-            same = {0, n} if base[pi] in (0, n) else {base[pi]}
-            alts = [k for k in range(n + 1) if k not in same]
+            final = pi == len(phrases) - 1
+            alts = [k for k in range(n + 1) if not grade.equivalent(k, base[pi], n, final)]
             renditions = [("correct", base, None)]
             if alts:
                 wrong = base.copy(); wrong[pi] = rng.choice(alts)
                 renditions.append(("wrong", wrong, pi))
             for kind, accs, target in renditions:
-                wav, sr = tts.speak(phrases, sid, accs, speed=cond["speed"], range_st=cond["range_st"])
+                try:
+                    wav, sr = tts.speak(phrases, sid, accs, speed=cond["speed"], range_st=cond["range_st"])
+                except Exception as e:
+                    print("SKIP", text, tts.to_kana(phrases, accs), e, file=sys.stderr)
+                    continue
                 if cond["snr"]:
                     wav = add_noise(wav, cond["snr"])
                 r = grade.grade(wav, sr, phrases)
@@ -57,7 +61,7 @@ def main(n_per_item=6):
                     truth_wrong = kind == "wrong" and j == target
                     rows.append(dict(text=text, phrase=pr.phrase.surface, kind="wrong" if truth_wrong else "correct",
                                      exp=pr.phrase.acc, said=accs[j], heard=pr.heard_acc, ok=pr.expected_ok,
-                                     conf=round(pr.confidence, 2), n=len(pr.phrase.moras), sid=sid,
+                                     conf=round(pr.confidence, 2), flat=pr.too_flat, n=len(pr.phrase.moras), sid=sid,
                                      heard_kana=r.heard_kana, st=[None if x != x else round(x, 1) for x in pr.mora_st], **cond))
             print(text, file=sys.stderr, flush=True)
     json.dump(rows, open("eval_rows.json", "w"), ensure_ascii=False, indent=0)
@@ -72,7 +76,8 @@ def report(rows):
         bad = sum(r["ok"] is (kind != "correct") for r in rs)
         abst = sum(r["ok"] is None for r in rs)
         label = ("passed", "FALSE ALARM") if kind == "correct" else ("caught", "MISSED")
-        print(f"{kind:8s} n={len(rs):4d}  {label[0]} {pct(good, len(rs))}  {label[1]} {pct(bad, len(rs))}  abstain {pct(abst, len(rs))}")
+        flat = sum(r["ok"] is None and r.get("flat", False) for r in rs)
+        print(f"{kind:8s} n={len(rs):4d}  {label[0]} {pct(good, len(rs))}  {label[1]} {pct(bad, len(rs))}  abstain {pct(abst, len(rs))} (of which too-flat {pct(flat, len(rs))})")
     for key in ("range_st", "snr", "speed"):
         print(f"\nby {key}:")
         for val in sorted({str(r[key]) for r in rows}):

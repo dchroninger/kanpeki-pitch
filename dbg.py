@@ -1,16 +1,16 @@
-import warnings; warnings.filterwarnings("ignore")
-import numpy as np
+import warnings, re; warnings.filterwarnings("ignore")
+import numpy as np, soundfile as sf, yaml
 from transformers.utils import logging as hl; hl.set_verbosity_error()
-from jpa import accent, align, pitch, tts
-phrases,_ = accent.analyze("箸が好きです")
-for vvm,sid in (("0",2),("4",11)):
-    tts.load(vvm)
-    q=tts.synth().create_audio_query_from_kana(tts.to_kana(phrases,[2,2]),sid); tts.enforce_pattern(q,phrases,[2,2])
-    print("query", [(m.text, round(m.pitch,2)) for ap in q.accent_phrases for m in ap.moras])
-    wav, sr = tts.speak(phrases, sid, [2,2], speed=0.85)
-    pad=np.zeros(4800,np.float32); a16=np.concatenate([pad,align.to16k(wav,sr),pad])
-    tr=pitch.track(a16,16000,conf_thresh=0.5)
-    sp=align.force_align(align.logprobs(a16),[m.hira for p in phrases for m in p.moras])
-    for m,s in zip([m.hira for p in phrases for m in p.moras], sp):
-        f=(tr.t>=s.start)&(tr.t<s.end)
-        print(f" {m} {s.start:.2f}-{s.end:.2f}", " ".join(f"{h:.0f}" if c>=.5 else "-" for h,c in zip(tr.hz[f],tr.conf[f])))
+from jpa import align
+from eval_jsut import parse_label, J
+labels = yaml.safe_load(open(J/"jsut-label/e2e_symbol/katakana.yaml"))
+for uid in ["BASIC5000_0001", "BASIC5000_0004"]:
+    gold = parse_label(labels[uid])
+    wav, sr = sf.read(J/"jsut_ver1.1/basic5000/wav"/f"{uid}.wav", dtype="float32")
+    pad = np.zeros(4800, np.float32); a16 = np.concatenate([pad, align.to16k(wav, sr), pad])
+    sp = align.force_align(align.logprobs(a16), [m.hira for p in gold for m in p.moras])
+    lab = [l.split() for l in open(J/"jsut-label/labels/basic5000"/f"{uid}.lab")]
+    ph = [(int(a)/1e7, re.search(r"-(.+?)\+", c).group(1)) for a, b, c in lab]
+    print(uid)
+    print("  ours :", " ".join(f"{m.kana}@{s.start-0.3:.2f}" for m, s in zip([m for p in gold for m in p.moras], sp))[:400])
+    print("  label:", " ".join(f"{p}@{t:.2f}" for t, p in ph)[:400])

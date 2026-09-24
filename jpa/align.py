@@ -72,26 +72,29 @@ def force_align(lp: np.ndarray, mora_hira: list[str]) -> list[MoraSpan] | None:
     for i, t in enumerate(toks):
         ext[2 * i + 1] = t
     NEG = -1e30
+    ext_a = np.array(ext)
+    emit = lp[:, ext_a]                                    # (T, S)
+    # skip transition s-2 -> s allowed onto a token that differs from the token two back
+    can_skip = np.zeros(S, dtype=bool)
+    can_skip[2:] = (ext_a[2:] != 0) & (ext_a[2:] != ext_a[:-2])
     dp = np.full((T, S), NEG)
-    bp = np.zeros((T, S), dtype=np.int8)
-    dp[0, 0] = lp[0, 0]
+    bp = np.zeros((T, S), dtype=np.int64)
+    dp[0, 0] = emit[0, 0]
     if S > 1:
-        dp[0, 1] = lp[0, ext[1]]
+        dp[0, 1] = emit[0, 1]
     for t in range(1, T):
         prev = dp[t - 1]
-        for s in range(S):
-            best, arg = prev[s], 0
-            if s >= 1 and prev[s - 1] > best:
-                best, arg = prev[s - 1], 1
-            if s >= 2 and ext[s] != 0 and ext[s] != ext[s - 2] and prev[s - 2] > best:
-                best, arg = prev[s - 2], 2
-            dp[t, s] = best + lp[t, ext[s]]
-            bp[t, s] = arg
-    s = S - 1 if dp[-1, S - 1] >= dp[-1, S - 2] else S - 2
+        c1 = np.concatenate([[NEG], prev[:-1]])
+        c2 = np.where(can_skip, np.concatenate([[NEG, NEG], prev[:-2]]), NEG)
+        stack = np.stack([prev, c1, c2])
+        arg = stack.argmax(0)
+        dp[t] = stack[arg, np.arange(S)] + emit[t]
+        bp[t] = arg
+    s = S - 1 if S < 2 or dp[-1, S - 1] >= dp[-1, S - 2] else S - 2
     path = np.zeros(T, dtype=int)
     for t in range(T - 1, -1, -1):
         path[t] = s
-        s -= bp[t, s]
+        s -= int(bp[t, s])
     # first frame of each token
     tok_first: dict[int, int] = {}
     tok_lp: dict[int, list[float]] = {}

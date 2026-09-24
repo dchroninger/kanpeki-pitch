@@ -1,0 +1,18 @@
+correct  n= 378  passed  77.2%  FALSE ALARM   1.1%  abstain  21.7% (of which too-flat  13.0%)
+wrong    n= 222  caught  80.2%  MISSED   0.0%  abstain  19.8% (of which too-flat  17.1%)
+
+by range_st:
+  2.0    false-alarm   2.9%  missed   0.0%  abstain  43.9%
+  3.0    false-alarm   0.0%  missed   0.0%  abstain  19.4%
+  4.0    false-alarm   1.1%  missed   0.0%  abstain  13.0%
+  6.0    false-alarm   0.0%  missed   0.0%  abstain   6.6%
+
+by snr:
+  10     false-alarm   0.0%  missed   0.0%  abstain  23.7%
+  20     false-alarm   0.0%  missed   0.0%  abstain  20.5%
+  None   false-alarm   2.1%  missed   0.0%  abstain  19.9%
+
+by speed:
+  0.8    false-alarm   0.8%  missed   0.0%  abstain  15.5%
+  1.0    false-alarm   0.8%  missed   0.0%  abstain  19.4%
+  1.15   false-alarm   1.6%  missed   0.0%  abstain  28.3%
