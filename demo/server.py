@@ -99,10 +99,57 @@ _sample_cache = {}
 app = FastAPI()
 
 
+FUNCTION_POS = {"助詞", "助動詞"}
+PATTERN_NAMES = {"heiban": "平板型", "atamadaka": "頭高型", "nakadaka": "中高型", "odaka": "尾高型"}
+
+
+def phrase_units(text):
+    """Per accent phrase: list of units [surface, morae, is_content]. Consecutive content nodes merge into one
+    unit (compounds like 方向感覚 are one accent unit); particles / auxiliaries are their own units."""
+    out = []
+    for n in pj.run_frontend(text):
+        if n["pos"] == "記号" or not n["pron"] or n["pron"] in ("、", "。"):
+            continue
+        k, content = len(accent.split_moras(n["pron"])), n["pos"] not in FUNCTION_POS
+        if n["chain_flag"] == 1 and out:
+            last = out[-1][-1]
+            if content and last[2]:
+                last[0] += n["string"]; last[1] += k
+            else:
+                out[-1].append([n["string"], k, content])
+        else:
+            out.append([[n["string"], k, content]])
+    return out
+
+
+def classify(acc, units):
+    """-> (type, word carrying the accent or '', note)."""
+    if acc == 0:
+        return "heiban", "", ""
+    pos = 0
+    for i, (surf, k, content) in enumerate(units):
+        if pos < acc <= pos + k:
+            local = acc - pos
+            if not content:  # the drop sits on a particle / ending
+                return None, surf, f"accent carried by the ending 〜{surf}"
+            multi = sum(u[2] for u in units) > 1
+            t = "atamadaka" if local == 1 else "odaka" if local == k else "nakadaka"
+            return t, (surf if multi else ""), ""
+        pos += k
+    return "nakadaka", "", ""
+
+
 def sentence_payload(uid):
     gold = parse_label(labels[uid])
-    return dict(id=uid, text=texts[uid], furigana=furigana(texts[uid]),
-                phrases=[dict(moras=[hira(m.kana) for m in p.moras], acc=p.acc, pattern=p.pattern) for p in gold])
+    units = phrase_units(texts[uid])
+    phrases = []
+    for i, p in enumerate(gold):
+        us = units[i] if i < len(units) else [["".join(m.kana for m in p.moras), len(p.moras), True]]
+        t, word, note = classify(p.acc, us)
+        phrases.append(dict(moras=[hira(m.kana) for m in p.moras], acc=p.acc, pattern=p.pattern,
+                            surface="".join(u[0] for u in us), type=t or "", type_kanji=PATTERN_NAMES.get(t, ""),
+                            word=word, note=note))
+    return dict(id=uid, text=texts[uid], furigana=furigana(texts[uid]), phrases=phrases)
 
 
 @app.get("/")

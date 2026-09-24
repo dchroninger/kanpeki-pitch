@@ -50,6 +50,17 @@ button:disabled { opacity: .5; cursor: default; }
 .heard .unsure .m.step { border-left: 2px dashed var(--unsure); }
 .heard .m.bad { background: var(--bad-bg); color: var(--bad); border-radius: 4px; }
 .heard .m.bad.H { border-top-color: var(--bad); } .heard .m.bad.L { border-bottom-color: var(--bad); } .heard .m.bad.step { border-left-color: var(--bad); }
+.phrase.hastip { cursor: help; border-radius: 6px; }
+.phrase.hastip:hover, .phrase.hastip:focus { background: color-mix(in srgb, var(--line) 10%, transparent); outline: none; }
+.tip { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 5;
+       background: var(--ink); color: var(--bg); border-radius: 8px; padding: 8px 12px; font-size: 13px; line-height: 1.5;
+       white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.18); pointer-events: none; }
+.tip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+              border: 6px solid transparent; border-top-color: var(--ink); }
+.tip b { display: block; font-size: 15px; }
+.tip i { font-style: normal; opacity: .75; }
+.tipnote { display: block; opacity: .7; font-size: 12px; }
+.phrase.hastip:hover .tip, .phrase.hastip:focus .tip { display: block; }
 .badge { position: absolute; top: -12px; right: -6px; font-size: 11px; color: var(--unsure); }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 22px; font-size: 12px; color: var(--muted); }
 .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; }
@@ -131,12 +142,17 @@ async function next() {
   $("results").hidden = true; $("error").hidden = true; $("status").textContent = "";
   $("mine").disabled = true; lastWav = null; recBlob = null;
   attempts = 0; $("guidewrap").hidden = true;
-  $("guide").innerHTML = cur.phrases.map(p => pitchHTML(p.pattern, p.moras)).join("");
+  $("guide").innerHTML = cur.phrases.map(p => pitchHTML(p.pattern, p.moras, "", [], p)).join("");
   $("rec").disabled = false; $("rec").innerHTML = "● Record";
 }
 
-function pitchHTML(pattern, moras, cls = "", bad = []) {
-  return `<span class="phrase ${cls}">` + moras.map((m, j) => {
+function tipHTML(p) {
+  const line = p.type ? `${p.word ? `${p.word}: ` : ""}${p.type_kanji} <i>(${p.type})</i> · [${p.acc}]` : `[${p.acc}]`;
+  return `<span class="tip"><b>${p.surface}</b><span class="tipline">${line}</span>`
+    + (p.note ? `<span class="tipnote">${p.note}</span>` : "") + `</span>`;
+}
+function pitchHTML(pattern, moras, cls = "", bad = [], tip = null) {
+  return `<span class="phrase ${cls}${tip ? " hastip" : ""}" tabindex="${tip ? 0 : -1}">` + (tip ? tipHTML(tip) : "") + moras.map((m, j) => {
     const lv = pattern[j], step = j > 0 && pattern[j - 1] !== lv ? " step" : "";
     return `<span class="m ${lv}${step}${bad.includes(j) ? " bad" : ""}">${m}</span>`;
   }).join("") + (cls === "unsure" ? `<span class="badge">?</span>` : "") + `</span>`;
@@ -146,7 +162,7 @@ function show(res) {
   $("score").innerHTML = res.score === null ? "–<small>couldn't judge any phrase</small>"
     : `${res.score}%<small>${res.phrases.filter(p => p.verdict === "ok").length} of ${res.phrases.filter(p => p.verdict !== "unsure").length} phrases`
       + (res.n_unsure ? ` · ${res.n_unsure} not sure` : "") + `</small>`;
-  $("expected").innerHTML = cur.phrases.map(p => pitchHTML(p.pattern, p.moras)).join("");
+  $("expected").innerHTML = cur.phrases.map(p => pitchHTML(p.pattern, p.moras, "", [], p)).join("");
   $("heard").innerHTML = res.phrases.map((r, i) => pitchHTML(r.heard_pattern, cur.phrases[i].moras, r.verdict, r.wrong_morae)).join("");
   $("heardkana").textContent = "Heard (kana recogniser): " + res.heard_kana;
   $("results").hidden = false;
