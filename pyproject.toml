@@ -7,6 +7,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "gdown>=6.4.0",
     "huggingface-hub>=1.33.0",
     "numpy>=2.5.3",
     "praat-parselmouth>=0.4.7",

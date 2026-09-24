@@ -111,6 +111,10 @@ def force_align(lp: np.ndarray, mora_hira: list[str]) -> list[MoraSpan] | None:
     for ti, mi in enumerate(owner):
         starts[mi] = tok_first[ti] if starts[mi] is None else starts[mi]
         scores[mi] += tok_lp[ti]
+    # morae with no in-vocab token (rare kana) borrow the previous mora's start
+    for mi in range(n):
+        if starts[mi] is None:
+            starts[mi] = starts[mi - 1] if mi else 0
     last = max(t for t, s in enumerate(path) if s % 2 == 1)
     spans = []
     for mi in range(n):
