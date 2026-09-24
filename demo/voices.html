@@ -32,6 +32,11 @@ button.primary { background: var(--ink); color: var(--bg); border-color: var(--i
 label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--border);
        padding: 12px 16px; display: flex; justify-content: center; gap: 16px; align-items: center; }
+details.sec summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+details.sec summary::-webkit-details-marker { display: none; }
+details.sec summary::before { content: "▸"; color: var(--muted); font-size: 13px; margin-top: 20px; transition: transform .15s; }
+details.sec[open] summary::before { transform: rotate(90deg); }
+details.sec summary h2 { display: inline; }
 </style>
 </head>
 <body>
@@ -51,11 +56,11 @@ label { font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: p
     <div class="muted" id="textnote">Edit freely — the voices read whatever is in the box. Audio streams sentence by sentence; click again to stop.</div>
   </div>
   <p class="muted">Split by measured pitch (median F0; under 165 Hz = male). Borderline voices are worth a listen either way. First play of a voice takes a second or two to load.</p>
-  <h2 id="mh">Male</h2><div class="grid" id="M"></div>
-  <h2 id="fh">Female</h2><div class="grid" id="F"></div>
-  <h2 id="ah">AivisSpeech — listening only</h2>
-  <p class="muted" style="margin-top:-4px">More natural, but these voices <b>don't follow the dictionary accent</b> (tested: 1 of 9 patterns right vs VOICEVOX 3 of 3), so they're never used as the "correct pitch" reference on the practice page. Fine for reading passages.</p>
-  <div class="grid" id="A"></div>
+  <details class="sec" id="secM" open><summary><h2 id="mh">Male</h2></summary><div class="grid" id="M"></div></details>
+  <details class="sec" id="secF" open><summary><h2 id="fh">Female</h2></summary><div class="grid" id="F"></div></details>
+  <details class="sec" id="secA" open><summary><h2 id="ah">AivisSpeech — listening only</h2></summary>
+    <p class="muted" style="margin-top:-4px">More natural, but these voices <b>don't follow the dictionary accent</b> (tested: 1 of 9 patterns right vs VOICEVOX 3 of 3), so they're never used as the "correct pitch" reference on the practice page. Fine for reading passages.</p>
+    <div class="grid" id="A"></div></details>
 </main>
 <div class="bar"><span class="muted" id="count"></span><button class="primary" id="save">Save selection</button><span class="muted" id="saved"></span></div>
 <script>
@@ -111,6 +116,7 @@ async function load() {
   cat = await (await fetch("/api/catalog")).json();
   for (const g of ["M", "F"]) $(g).innerHTML = cat.filter(v => v.gender === g && v.engine !== "aivis").map(card).join("");
   $("A").innerHTML = cat.filter(v => v.engine === "aivis").map(card).join("");
+  $("ah").textContent = `AivisSpeech — listening only (${cat.filter(v => v.engine === "aivis").length})`;
   $("mh").textContent = `Male (${cat.filter(v => v.gender === "M" && v.engine !== "aivis").length})`;
   $("fh").textContent = `Female (${cat.filter(v => v.gender === "F" && v.engine !== "aivis").length})`;
   document.querySelectorAll("button[data-id]").forEach(b => b.onclick = () => playVoice(b));
@@ -129,6 +135,11 @@ try { const v = localStorage.getItem("speed"); if (v) $("speed").value = v; } ca
 const showSpeed = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
 $("speed").oninput = () => { showSpeed(); try { localStorage.setItem("speed", $("speed").value); } catch (e) {} };
 showSpeed();
+// remember which sections are collapsed
+document.querySelectorAll("details.sec").forEach(d => {
+  try { const v = localStorage.getItem("open-" + d.id); if (v !== null) d.open = v === "1"; } catch (e) {}
+  d.addEventListener("toggle", () => { try { localStorage.setItem("open-" + d.id, d.open ? "1" : "0"); } catch (e) {} });
+});
 loadTexts().then(load);
 </script>
 </body>
