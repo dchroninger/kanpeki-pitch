@@ -65,6 +65,12 @@ button:disabled { opacity: .5; cursor: default; }
 .tipgloss .tw { opacity: .7; margin-right: 6px; }
 .tip { white-space: normal; min-width: 160px; max-width: 320px; }
 .phrase.hastip:hover .tip, .phrase.hastip:focus .tip { display: block; }
+.levels { display: flex; gap: 4px; flex-wrap: wrap; }
+.levels button { padding: 4px 10px; font-size: 13px; }
+.levels button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.levels small { opacity: .6; margin-left: 3px; font-size: 11px; }
+.lvbadge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+           color: var(--muted); margin-bottom: 6px; }
 .badge { position: absolute; top: -12px; right: -6px; font-size: 11px; color: var(--unsure); }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 22px; font-size: 12px; color: var(--muted); }
 .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; }
@@ -83,10 +89,12 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 <body>
 <main>
   <header>
-    <h1>Pitch Accent Check <span class="muted">· throwaway demo · <a href="/voices" style="color:inherit">voices</a></span></h1>
+    <div class="levels" id="levels"></div>
+    <h1 style="order:-1">Pitch Accent Check <span class="muted">· throwaway demo · <a href="/voices" style="color:inherit">voices</a></span></h1>
   </header>
 
   <section class="card">
+    <span class="lvbadge" id="lvbadge"></span>
     <div id="sentence" class="sentence">…</div>
     <div id="guidewrap" hidden>
       <div class="rowlabel" style="margin-top:10px">Pitch guide</div>
@@ -140,8 +148,20 @@ function renderVoices() {
   }
 }
 
+let LEVEL = "N4";
+try { LEVEL = localStorage.getItem("level") || "N4"; } catch (e) {}
+async function loadLevels() {
+  const ls = await (await fetch("/api/levels")).json();
+  const opts = [...ls, { level: "any", n: ls.reduce((a, b) => a + b.n, 0) }];
+  $("levels").innerHTML = opts.map(l => `<button data-l="${l.level}" class="${l.level === LEVEL ? "on" : ""}" ${l.n ? "" : "disabled"}>${l.level === "any" ? "Any" : l.level}<small>${l.n}</small></button>`).join("");
+  $("levels").querySelectorAll("button").forEach(b => b.onclick = () => {
+    LEVEL = b.dataset.l; try { localStorage.setItem("level", LEVEL); } catch (e) {}
+    $("levels").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); next();
+  });
+}
 async function next() {
-  cur = await (await fetch("/api/sentence")).json();
+  cur = await (await fetch(`/api/sentence?level=${LEVEL}`)).json();
+  $("lvbadge").textContent = `JLPT ${cur.level}`;
   $("sentence").innerHTML = cur.furigana.map(([s, r]) => r ? `<ruby>${s}<rt>${r}</rt></ruby>` : s).join("");
   $("results").hidden = true; $("error").hidden = true; $("status").textContent = "";
   $("mine").disabled = true; lastWav = null; recBlob = null;
@@ -231,7 +251,7 @@ try { const v = localStorage.getItem("speed"); if (v) $("speed").value = v; } ca
 const showSpeed = () => { $("speedval").textContent = Number($("speed").value).toFixed(2) + "×"; };
 $("speed").oninput = () => { showSpeed(); try { localStorage.setItem("speed", $("speed").value); } catch (e) {} };
 showSpeed();
-loadVoices().then(next);
+Promise.all([loadVoices(), loadLevels()]).then(next);
 </script>
 </body>
 </html>

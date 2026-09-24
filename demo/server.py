@@ -46,17 +46,20 @@ def furigana(text):
     return out
 
 
-SENTS = []
+from jlpt import sentence_level, word_levels
+LEVEL_NAME = {5: "N5", 4: "N4", 3: "N3", 2: "N2", 1: "N1", 0: "N1+"}
+SENTS, LEVEL_OF = [], {}
 for uid in sorted(labels):
     gold = parse_label(labels[uid])
     n = sum(len(p.moras) for p in gold)
-    if not 12 <= n <= 30:
+    if not 8 <= n <= 40:
         continue
     pred, _ = accent.analyze(texts[uid])
-    if [p.reading for p in pred] != [p.reading for p in gold]:
+    if [p.reading for p in pred] != [p.reading for p in gold]:   # furigana must match the hand-labelled reading
         continue
-    SENTS.append(uid)
-print(f"{len(SENTS)} demo sentences", flush=True)
+    SENTS.append(uid); LEVEL_OF[uid] = sentence_level(texts[uid])
+from collections import Counter
+print(f"{len(SENTS)} demo sentences by JLPT level:", {LEVEL_NAME[k]: v for k, v in sorted(Counter(LEVEL_OF.values()).items(), reverse=True)}, flush=True)
 
 # ---------- models
 tree = pickle.load(open(TREE, "rb"))
@@ -201,7 +204,8 @@ def sentence_payload(uid):
         phrases.append(dict(moras=[hira(m.kana) for m in p.moras], acc=p.acc, pattern=p.pattern,
                             surface="".join(u[0] for u in us), type=t or "", type_kanji=PATTERN_NAMES.get(t, ""),
                             word=word, note=note, glosses=unit_glosses(us)))
-    return dict(id=uid, text=texts[uid], furigana=furigana(texts[uid]), phrases=phrases)
+    return dict(id=uid, text=texts[uid], furigana=furigana(texts[uid]), phrases=phrases,
+                level=LEVEL_NAME[LEVEL_OF.get(uid, 0)])
 
 
 @app.get("/")
@@ -209,9 +213,17 @@ def index():
     return FileResponse(ROOT / "demo" / "index.html")
 
 
+@app.get("/api/levels")
+def levels():
+    c = Counter(LEVEL_OF.values())
+    return [dict(level=LEVEL_NAME[k], n=c.get(k, 0)) for k in (5, 4, 3, 2, 1, 0)]
+
+
 @app.get("/api/sentence")
-def sentence():
-    return sentence_payload(random.choice(SENTS))
+def sentence(level: str = "any"):
+    inv = {v: k for k, v in LEVEL_NAME.items()}
+    pool = SENTS if level not in inv else [u for u in SENTS if LEVEL_OF[u] == inv[level]]
+    return sentence_payload(random.choice(pool or SENTS))
 
 
 @app.get("/api/voices")
