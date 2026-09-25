@@ -65,6 +65,19 @@ button:disabled { opacity: .5; cursor: default; }
 .tipgloss .tw { opacity: .7; margin-right: 6px; }
 .tip { white-space: normal; min-width: 160px; max-width: 320px; }
 .phrase.hastip:hover .tip, .phrase.hastip:focus .tip { display: block; }
+.modes { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.modes button { border: 0; border-radius: 0; padding: 6px 14px; font-size: 13px; }
+.modes button.on { background: var(--ink); color: var(--bg); }
+#particle { font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--ink); }
+.meaning { color: var(--muted); font-size: 15px; margin-top: -6px; }
+.members { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 4px; }
+.member { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; min-width: 110px; }
+.member.target { border-color: var(--line); box-shadow: 0 0 0 1px var(--line) inset; }
+.member .w { font-size: 22px; } .member .r { font-size: 12px; color: var(--muted); } .member .g { font-size: 12px; color: var(--muted); max-width: 180px; }
+.member .say { font-size: 11px; color: var(--line); font-weight: 600; letter-spacing: .05em; }
+.pairres { font-size: 18px; margin: 14px 0 0; }
+.heard .context .m { opacity: .4; }
+.heard .context .m.H, .heard .context .m.L, .heard .context .m.step { border-color: transparent !important; }
 .levels { display: flex; gap: 4px; flex-wrap: wrap; }
 .levels button { padding: 4px 10px; font-size: 13px; }
 .levels button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -89,13 +102,23 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 <body>
 <main>
   <header>
+    <div class="modes" id="modes">
+      <button data-m="sentence">Sentences</button><button data-m="word">Words</button><button data-m="pair">Minimal pairs</button>
+    </div>
+    <select id="particle" title="Word mode: what to say after the word">
+      <option value="carrier">word + particle + follow-up</option>
+      <option value="particle">word + particle</option>
+      <option value="word">word only</option>
+    </select>
     <div class="levels" id="levels"></div>
     <h1 style="order:-1">Pitch Accent Check <span class="muted">· throwaway demo · <a href="/voices" style="color:inherit">voices</a></span></h1>
   </header>
 
   <section class="card">
     <span class="lvbadge" id="lvbadge"></span>
+    <div id="members" class="members" hidden></div>
     <div id="sentence" class="sentence">…</div>
+    <div id="meaning" class="meaning"></div>
     <div id="guidewrap" hidden>
       <div class="rowlabel" style="margin-top:10px">Pitch guide</div>
       <div class="pitchrow" id="guide"></div>
@@ -113,12 +136,13 @@ select { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; 
 
   <section class="card" id="results" hidden>
     <div class="score" id="score"></div>
+    <div class="pairres" id="pairres" hidden></div>
     <div class="rowlabel">Expected</div>
     <div class="voices" id="voicesRes"></div>
     <div class="pitchrow" id="expected"></div>
     <div class="rowlabel">What you said</div>
     <div class="pitchrow heard" id="heard"></div>
-    <div class="legend"><span class="l-ok">matched</span><span class="l-bad">wrong pitch</span><span class="l-un">not sure (no verdict)</span></div>
+    <div class="legend"><span class="l-ok">matched</span><span class="l-bad">wrong pitch</span><span class="l-un">not sure (no verdict)</span><span class="muted">faded = follow-up, not graded</span></div>
     <div class="heardkana" id="heardkana"></div>
     <div class="controls"><button id="next" class="primary">Next sentence →</button></div>
   </section>
@@ -148,10 +172,19 @@ function renderVoices() {
   }
 }
 
-let LEVEL = "N4";
-try { LEVEL = localStorage.getItem("level") || "N4"; } catch (e) {}
+let LEVEL = "N4", MODE = "sentence";
+try { LEVEL = localStorage.getItem("level") || "N4"; MODE = localStorage.getItem("mode") || "sentence";
+      $("particle").value = localStorage.getItem("particle") || "carrier"; } catch (e) {}
+function setMode(m) {
+  MODE = m; try { localStorage.setItem("mode", m); } catch (e) {}
+  $("modes").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  $("particle").hidden = m !== "word";
+}
+$("modes").querySelectorAll("button").forEach(b => b.onclick = () => { setMode(b.dataset.m); loadLevels().then(next); });
+$("particle").onchange = () => { try { localStorage.setItem("particle", $("particle").value); } catch (e) {} next(); };
+setMode(MODE);
 async function loadLevels() {
-  const ls = await (await fetch("/api/levels")).json();
+  const ls = await (await fetch(`/api/levels?mode=${MODE}`)).json();
   const opts = [...ls, { level: "any", n: ls.reduce((a, b) => a + b.n, 0) }];
   $("levels").innerHTML = opts.map(l => `<button data-l="${l.level}" class="${l.level === LEVEL ? "on" : ""}" ${l.n ? "" : "disabled"}>${l.level === "any" ? "Any" : l.level}<small>${l.n}</small></button>`).join("");
   $("levels").querySelectorAll("button").forEach(b => b.onclick = () => {
@@ -160,8 +193,15 @@ async function loadLevels() {
   });
 }
 async function next() {
-  cur = await (await fetch(`/api/sentence?level=${LEVEL}`)).json();
-  $("lvbadge").textContent = `JLPT ${cur.level}`;
+  cur = await (await fetch(`/api/item?mode=${MODE}&level=${LEVEL}&particle=${$("particle").value}`)).json();
+  $("lvbadge").textContent = cur.level === "N1+" && MODE !== "sentence" ? "not on JLPT lists" : `JLPT ${cur.level}`;
+  $("meaning").textContent = MODE === "word" && cur.meaning ? cur.meaning : "";
+  $("members").hidden = MODE !== "pair";
+  if (MODE === "pair") {
+    $("members").innerHTML = cur.members.map(m => `<div class="member ${m.target ? "target" : ""}">
+      ${m.target ? `<div class="say">SAY THIS ONE</div>` : ""}<div class="w">${m.word}</div><div class="r">${m.reading}</div>
+      <div class="g">${(m.gloss || "").split(";")[0]}</div></div>`).join("");
+  }
   $("sentence").innerHTML = cur.furigana.map(([s, r]) => r ? `<ruby>${s}<rt>${r}</rt></ruby>` : s).join("");
   $("results").hidden = true; $("error").hidden = true; $("status").textContent = "";
   $("mine").disabled = true; lastWav = null; recBlob = null;
@@ -184,11 +224,22 @@ function pitchHTML(pattern, moras, cls = "", bad = [], tip = null) {
 }
 
 function show(res) {
-  $("score").innerHTML = res.score === null ? "–<small>couldn't judge any phrase</small>"
+  $("score").innerHTML = res.score === null ? "–<small>couldn't judge it confidently</small>"
     : `${res.score}%<small>${res.phrases.filter(p => p.verdict === "ok").length} of ${res.phrases.filter(p => p.verdict !== "unsure").length} phrases`
       + (res.n_unsure ? ` · ${res.n_unsure} not sure` : "") + `</small>`;
   $("expected").innerHTML = cur.phrases.map(p => pitchHTML(p.pattern, p.moras, "", [], p)).join("");
   $("heard").innerHTML = res.phrases.map((r, i) => pitchHTML(r.heard_pattern, cur.phrases[i].moras, r.verdict, r.wrong_morae)).join("");
+  $("pairres").hidden = !res.pair;
+  if (res.pair) {
+    const tgt = cur.members.find(m => m.target), heard = cur.members.find(m => m.word === res.pair.heard);
+    $("pairres").innerHTML = !heard ? `Couldn't tell which one you said — try exaggerating the pitch a little.`
+      : heard.word === tgt.word ? `✓ You said <b>${tgt.word}</b> (${tgt.type_kanji})`
+      : `✗ That sounded like <b>${heard.word}</b> (${heard.type_kanji}), not <b>${tgt.word}</b> (${tgt.type_kanji})`;
+    // reveal all members' patterns
+    $("members").innerHTML = cur.members.map(m => `<div class="member ${m.target ? "target" : ""}">
+      <div class="w">${m.word}</div><div class="r">${m.reading}</div><div class="g">${m.type_kanji} · [${m.acc}]</div>
+      <div class="pitchrow" style="font-size:16px">${pitchHTML(m.pattern, [...m.reading.split(""), ...(m.pattern.length > m.reading.length ? ["が"] : [])])}</div></div>`).join("");
+  }
   $("heardkana").textContent = "Heard (kana recogniser): " + res.heard_kana;
   $("results").hidden = false;
 }

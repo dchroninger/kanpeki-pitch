@@ -20,6 +20,7 @@ from eval_jsut import parse_label, J
 TREE = os.environ.get("TREE", "model_v3_full_p7.pkl")
 SEQ = os.environ.get("SEQ", "seq_full_aug.pt")
 HI, LO = 0.9, 0.1
+PAIR_MIN, PAIR_RATIO = 0.6, 2.5   # minimal pairs: top member must be >= 0.6 and >= 2.5x the runner-up
 align.DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
 
 # ---------- sentences: JSUT with hand labels, OpenJTalk reading must match the label's morae
@@ -60,6 +61,19 @@ for uid in sorted(labels):
     SENTS.append(uid); LEVEL_OF[uid] = sentence_level(texts[uid])
 from collections import Counter
 print(f"{len(SENTS)} demo sentences by JLPT level:", {LEVEL_NAME[k]: v for k, v in sorted(Counter(LEVEL_OF.values()).items(), reverse=True)}, flush=True)
+
+# ---------- word mode / minimal pairs
+sys.path.insert(0, str(ROOT / "demo"))
+import items as IT
+WORDS = IT.build_words()
+PAIRS = IT.build_pairs(WORDS)
+print(f"{len(WORDS)} practice words, {len(PAIRS)} minimal-pair groups", flush=True)
+ITEMS = {}   # generated word / pair items by id: dict(text, gold, alts, groups, level, kind, ...)
+
+
+def item_level(lv):
+    return LEVEL_NAME[lv]
+
 
 # ---------- models
 tree = pickle.load(open(TREE, "rb"))
@@ -194,18 +208,39 @@ def classify(acc, units):
     return "nakadaka", "", ""
 
 
-def sentence_payload(uid):
-    gold = parse_label(labels[uid])
-    units = phrase_units(texts[uid])
+def payload(text, gold, alts=None):
+    units = phrase_units(text)
     phrases = []
     for i, p in enumerate(gold):
         us = units[i] if i < len(units) else [["".join(m.kana for m in p.moras), len(p.moras), True, []]]
         t, word, note = classify(p.acc, us)
         phrases.append(dict(moras=[hira(m.kana) for m in p.moras], acc=p.acc, pattern=p.pattern,
                             surface="".join(u[0] for u in us), type=t or "", type_kanji=PATTERN_NAMES.get(t, ""),
-                            word=word, note=note, glosses=unit_glosses(us)))
-    return dict(id=uid, text=texts[uid], furigana=furigana(texts[uid]), phrases=phrases,
-                level=LEVEL_NAME[LEVEL_OF.get(uid, 0)])
+                            word=word, note=note, glosses=unit_glosses(us),
+                            graded=alts is None or alts[i] is not None,
+                            accepted=(alts[i] if alts and alts[i] else [p.acc])))
+    return dict(text=text, furigana=furigana(text), phrases=phrases)
+
+
+def sentence_payload(uid):
+    d = payload(texts[uid], parse_label(labels[uid]))
+    return dict(d, id=uid, kind="sentence", level=LEVEL_NAME[LEVEL_OF.get(uid, 0)])
+
+
+def word_item(w, particle_mode, kind="word", members=None):
+    text, carrier = IT.item_text(w, particle_mode)
+    gold, alts = IT.item_phrases(w, text)
+    iid = f"{kind}:{text}"
+    ITEMS[iid] = dict(text=text, gold=gold, alts=alts, groups=[gold], members=members, target=w["word"])
+    d = payload(text, gold, alts)
+    d.update(id=iid, kind=kind, level=LEVEL_NAME[w["level"]], meaning=w.get("meaning", ""))
+    if members:
+        d["members"] = [dict(word=m["word"], reading=m["reading"], acc=m["accs"][0],
+                             type_kanji=PATTERN_NAMES[["heiban", "atamadaka", "nakadaka", "odaka"][
+                                 0 if m["accs"][0] == 0 else 1 if m["accs"][0] == 1 else 3 if m["accs"][0] == m["n"] else 2]],
+                             pattern=accent.pattern(m["n"] + (1 if particle_mode != "word" else 0), m["accs"][0]),
+                             gloss=gloss(m["word"], "", "名詞"), target=m["word"] == w["word"]) for m in members]
+    return d
 
 
 @app.get("/")
@@ -213,17 +248,37 @@ def index():
     return FileResponse(ROOT / "demo" / "index.html")
 
 
+INV = {v: k for k, v in LEVEL_NAME.items()}
+
+
+def _pool(mode):
+    if mode == "word":
+        return [(w, w["level"]) for w in WORDS.values()]
+    if mode == "pair":
+        return [(g, min(m["level"] for m in g) if all(m["level"] for m in g) else 0) for g in PAIRS]
+    return [(u, LEVEL_OF[u]) for u in SENTS]
+
+
 @app.get("/api/levels")
-def levels():
-    c = Counter(LEVEL_OF.values())
+def levels(mode: str = "sentence"):
+    c = Counter(lv for _, lv in _pool(mode))
     return [dict(level=LEVEL_NAME[k], n=c.get(k, 0)) for k in (5, 4, 3, 2, 1, 0)]
+
+
+@app.get("/api/item")
+def item(mode: str = "sentence", level: str = "any", particle: str = "carrier"):
+    pool = [x for x, lv in _pool(mode) if level not in INV or lv == INV[level]] or [x for x, _ in _pool(mode)]
+    pick = random.choice(pool)
+    if mode == "word":
+        return word_item(pick, particle)
+    if mode == "pair":
+        return word_item(random.choice(pick), "carrier", kind="pair", members=pick)
+    return sentence_payload(pick)
 
 
 @app.get("/api/sentence")
 def sentence(level: str = "any"):
-    inv = {v: k for k, v in LEVEL_NAME.items()}
-    pool = SENTS if level not in inv else [u for u in SENTS if LEVEL_OF[u] == inv[level]]
-    return sentence_payload(random.choice(pool or SENTS))
+    return item("sentence", level)
 
 
 @app.get("/api/voices")
@@ -315,8 +370,10 @@ def sample(voice: int, key: str = "soseki", text: str = ""):
 @app.get("/api/tts")
 def speak(id: str, voice: int = 2, mode: str = "natural", speed: float = 0.9):
     tts.load(BY_ID[voice]["vvm"])
-    # JSUT labels mark pauses with "_": speak each pause group as its own clause
-    groups = [parse_label(g) for g in labels[id].strip("^$?").split("_") if g.strip("#")]
+    if id in ITEMS:
+        groups = ITEMS[id]["groups"]
+    else:  # JSUT labels mark pauses with "_": speak each pause group as its own clause
+        groups = [parse_label(g) for g in labels[id].strip("^$?").split("_") if g.strip("#")]
     wav, sr = tts.speak_groups(groups, voice, speed=min(max(speed, 0.5), 1.3),
                                enforce={"natural": "natural", "enforce": True, "raw": "raw"}[mode])
     buf = io.BytesIO(); sf.write(buf, wav, sr, format="WAV")
@@ -329,10 +386,12 @@ async def grade(request: Request, id: str, save: int = 1):
     import time
     if save:  # user recordings are kept (first real learner data); scripted tests pass save=0
         rec_dir = ROOT / "demo" / "recordings"; rec_dir.mkdir(exist_ok=True)
-        (rec_dir / f"{time.strftime('%Y%m%d-%H%M%S')}_{id}.wav").write_bytes(body)
+        (rec_dir / f"{time.strftime('%Y%m%d-%H%M%S')}_{re.sub(r'[^\w]', '_', id)}.wav").write_bytes(body)
     audio, sr = sf.read(io.BytesIO(body), dtype="float32")
     if audio.ndim > 1: audio = audio.mean(1)
-    gold = parse_label(labels[id])
+    it = ITEMS.get(id)
+    gold = it["gold"] if it else parse_label(labels[id])
+    alts = it["alts"] if it else [[p.acc] for p in gold]
     pad = np.zeros(4800, np.float32)
     a16 = np.concatenate([pad, align.to16k(audio, sr), pad])
     lp = align.logprobs(a16)
@@ -351,21 +410,36 @@ async def grade(request: Request, id: str, save: int = 1):
     else:
         posts = tree_posts
     out, i = [], 0
+    pair = None
     for pi, (p, post) in enumerate(zip(gold, posts)):
         n, final = len(p.moras), pi == len(gold) - 1
-        pe = sum(v for k, v in post.items() if equivalent(k, p.acc, n, final))
+        if alts[pi] is None:   # context phrase (follow-up): shown, not graded
+            out.append(dict(verdict="context", confidence=None, heard_acc=p.acc, heard_pattern=p.pattern, wrong_morae=[]))
+            continue
+        prob = lambda a: sum(v for k, v in post.items() if equivalent(k, a, n, final))
+        best_alt = max(alts[pi], key=prob)            # any accepted dictionary accent counts
+        pe = prob(best_alt)
         verdict = "ok" if pe >= HI else "wrong" if pe <= LO else "unsure"
         best = max(post, key=post.get)
         if verdict != "wrong":
-            best = p.acc if verdict == "ok" else best
+            best = best_alt if verdict == "ok" else best
+        if pi == 0 and it and it.get("members"):
+            # minimal pairs: which member does the heard pattern match?
+            scores = {m["word"]: prob(m["accs"][0]) for m in it["members"]}
+            ranked = sorted(scores, key=scores.get, reverse=True)
+            top, second = ranked[0], (scores[ranked[1]] if len(ranked) > 1 else 0.0)
+            # relative decision: which member is clearly the most likely (not an absolute 0.9 bar)
+            decided = scores[top] >= PAIR_MIN and scores[top] >= PAIR_RATIO * max(second, 1e-6)
+            pair = dict(target=it["target"], heard=top if decided else None,
+                        probs={k: round(float(v), 3) for k, v in scores.items()})
         heard = accent.pattern(n, best)
         exp = p.pattern
         bad = [j for j in range(n) if verdict == "wrong" and heard[j] != exp[j]]
         out.append(dict(verdict=verdict, confidence=round(float(pe), 3), heard_acc=int(best), heard_pattern=heard, wrong_morae=bad))
         i += n
-    judged = [o for o in out if o["verdict"] != "unsure"]
+    judged = [o for o in out if o["verdict"] in ("ok", "wrong")]
     score = round(100 * sum(o["verdict"] == "ok" for o in judged) / len(judged)) if judged else None
-    return dict(score=score, phrases=out, heard_kana=heard_kana, n_unsure=sum(o["verdict"] == "unsure" for o in out))
+    return dict(score=score, phrases=out, heard_kana=heard_kana, n_unsure=sum(o["verdict"] == "unsure" for o in out), pair=pair)
 
 
 if __name__ == "__main__":
