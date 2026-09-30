@@ -1,0 +1,44 @@
+# --- Python -------------------------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# --- Your voice: NEVER commit -------------------------------------------
+# Recordings made through the demo, and anything private.
+demo/recordings/
+demo/private/
+recordings/
+private/
+# ...and audio in general. Reference audio is regenerated locally.
+*.wav
+*.flac
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.opus
+*.aiff
+*.caf
+
+# --- Third-party data and models ----------------------------------------
+# Fetched locally; each has its own license (see NOTICE.md). Do not commit.
+models/
+vendor/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.ckpt
+*.bin
+*.pkl
+*.npy
+*.npz
+*.sqlite
+*.db
+
+# --- Generated output ----------------------------------------------------
+*.json
+*.log
+*_out.txt
+*_err.txt

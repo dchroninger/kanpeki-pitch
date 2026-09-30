@@ -1,7 +1,7 @@
 [project]
-name = "spike"
+name = "kanpeki-pitch"
 version = "0.1.0"
-description = "Add your description here"
+description = "Analyze and train Japanese pitch accent: grade a recording against the dictionary accent, on-device."
 authors = [
     { name = "Dave Chroninger", email = "dchroninger@users.noreply.github.com" }
 ]
@@ -11,7 +11,6 @@ dependencies = [
     "gdown>=6.4.0",
     "huggingface-hub>=1.33.0",
     "numpy>=2.5.3",
-    "praat-parselmouth>=0.4.7",
     "pyopenjtalk-plus>=0.4.1.post9",
     "python-multipart>=0.0.32",
     "pyyaml>=6.0.3",
@@ -26,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-spike = "spike:main"
+kanpeki-pitch = "kanpeki_pitch:main"
 
 [build-system]
 requires = ["uv_build>=0.12.18,<0.13.0"]
